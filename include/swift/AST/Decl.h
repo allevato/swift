@@ -3098,6 +3098,12 @@ public:
   /// Note that this is true for enums with absolutely no cases.
   bool hasOnlyCasesWithoutAssociatedValues() const;
 
+  /// True if the enum has cases and those cases either have no associated
+  /// values, or all of the associated values conform to the given protocol.
+  ///
+  /// Note that this is false for enums with absolutely no cases.
+  bool allAssociatedValuesConformIfPresent(ProtocolDecl *protocol) const;
+
   /// True if the enum has cases.
   bool hasCases() const {
     return !getAllElements().empty();

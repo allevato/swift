@@ -2789,6 +2789,44 @@ bool EnumDecl::hasOnlyCasesWithoutAssociatedValues() const {
   return true;
 }
 
+static bool typeConformsToProtocol(Type type, ProtocolDecl *protocol) {
+  if (auto nominal = type->getNominalOrBoundGenericNominal()) {
+    SmallVector<ProtocolConformance *, 1> conformances;
+    return nominal->lookupConformance(
+      nominal->getModuleContext(), protocol, conformances);
+  }
+  return false;
+}
+
+bool EnumDecl::allAssociatedValuesConformIfPresent(
+        ProtocolDecl *protocol) const {
+  // FIXME: Cache this.
+  // FIXME: Handle recursive value types (via indirect enum cases).
+  bool hasElements = false;
+  for (auto elt : getAllElements()) {
+    hasElements = true;
+    auto argumentType = elt->getArgumentType();
+    if (argumentType.isNull())
+      continue;
+    if (auto tupleType = argumentType->getAs<TupleType>()) {
+      // One associated value with a label or multiple associated values
+      // (labeled or unlabeled) are tuple types.
+      for (auto tupleElementType : tupleType->getElementTypes()) {
+        if (!typeConformsToProtocol(tupleElementType, protocol)) {
+          return false;
+        }
+      }
+    } else {
+      // One associated value with no label is represented as a paren type.
+      argumentType = argumentType->getWithoutParens();
+      if (!typeConformsToProtocol(argumentType, protocol)) {
+        return false;
+      }
+    }
+  }
+  return hasElements;
+}
+
 ProtocolDecl::ProtocolDecl(DeclContext *DC, SourceLoc ProtocolLoc,
                            SourceLoc NameLoc, Identifier Name,
                            MutableArrayRef<TypeLoc> Inherited,
