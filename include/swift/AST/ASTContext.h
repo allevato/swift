@@ -460,6 +460,12 @@ public:
 
   /// Retrieve the declaration of Array.append(element:)
   FuncDecl *getArrayAppendElementDecl() const;
+  
+  /// Retrieve the declaration of Swift.&* <T: _IntegerArithmetic>(T, T) -> T.
+  FuncDecl *getOverflowingIntegerMultiplyDecl() const;
+
+  /// Retrieve the declaration of Swift.&+ <T: _IntegerArithmetic>(T, T) -> T.
+  FuncDecl *getOverflowingIntegerAddDecl() const;
 
   /// Retrieve the declaration of
   /// Array.reserveCapacityForAppend(newElementsCount: Int)

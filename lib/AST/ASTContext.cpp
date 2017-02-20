@@ -172,6 +172,12 @@ struct ASTContext::Implementation {
   /// func reserveCapacityForAppend(newElementsCount: Int)
   FuncDecl *ArrayReserveCapacityDecl = nullptr;
 
+  /// func &* <T: _IntegerArithmetic>(T, T) -> T
+  FuncDecl *OverflowingIntegerMultiplyDecl = nullptr;
+
+  /// func &+ <T: _IntegerArithmetic>(T, T) -> T
+  FuncDecl *OverflowingIntegerAddDecl = nullptr;
+
   /// func _unimplementedInitializer(className: StaticString).
   FuncDecl *UnimplementedInitializerDecl = nullptr;
 
@@ -1016,6 +1022,102 @@ FuncDecl *ASTContext::getArrayReserveCapacityDecl() const {
       Impl.ArrayReserveCapacityDecl = FnDecl;
       return FnDecl;
     }
+  }
+  return nullptr;
+}
+
+/// Returns the binary operator with the given name and signature (T, T) -> T,
+/// where T is constrained by _IntegerArithmetic.
+/// \p ctx The AST context.
+/// \p oper The name of the operator to look up.
+static FuncDecl*
+getOverflowingIntegerArithmeticOperatorDecl(const ASTContext *ctx,
+                                            const char *oper) {
+  // First, find the _IntegerArithmetic protocol.
+  SmallVector<ValueDecl *, 1> integerArithmeticProtocols;
+  ctx->lookupInSwiftModule("_IntegerArithmetic", integerArithmeticProtocols);
+  ProtocolType *integerArithmeticType = nullptr;
+
+  for (ValueDecl *vd : integerArithmeticProtocols) {
+    // We shouldn't encounter anything that isn't a protocol...
+    if (auto integerArithmeticDecl = dyn_cast<ProtocolDecl>(vd)) {
+      integerArithmeticType = integerArithmeticDecl->getDeclaredType();
+      break;
+    }
+  }
+  if (!integerArithmeticType)
+    return nullptr;
+
+  // Next, lookup all the definitions of the operator and find the one with the
+  // _IntegerArithmetic requirement.
+  SmallVector<ValueDecl *, 30> multiplyFuncs;
+  ctx->lookupInSwiftModule(oper, multiplyFuncs);
+
+  for (ValueDecl *vd : multiplyFuncs) {
+    // All operator decls should be functions, but who knows...
+    FuncDecl *funcDecl = dyn_cast<FuncDecl>(vd);
+    if (!funcDecl)
+      continue;
+
+    auto resolver = ctx->getLazyResolver();
+    if (resolver)
+      resolver->resolveDeclSignature(funcDecl);
+
+    auto genericFnType =
+    funcDecl->getInterfaceType()->getAs<GenericFunctionType>();
+    if (!genericFnType)
+      continue;
+
+    auto requirements = genericFnType->getGenericSignature()->getRequirements();
+    if (requirements.size() != 1)
+      continue;
+
+    auto requirement = requirements[0];
+    if (requirement.getKind() != RequirementKind::Conformance)
+      continue;
+    if (!requirement.getSecondType()->isEqual(integerArithmeticType)) {
+      continue;
+    }
+
+    auto genericType = requirement.getFirstType();
+    auto input = genericFnType->getInput();
+    auto resultType = genericFnType->getResult();
+
+    // Check for the signature: (T, T) -> T
+    auto tupleType = dyn_cast<TupleType>(input.getPointer());
+    assert(tupleType);
+    if (tupleType->getNumElements() != 2)
+      continue;
+
+    auto argType1 = tupleType->getElementType(0);
+    auto argType2 = tupleType->getElementType(1);
+    if (argType1->isEqual(genericType) &&
+        argType2->isEqual(genericType) &&
+        resultType->isEqual(genericType)) {
+      return funcDecl;
+    }
+  }
+  return nullptr;
+}
+
+FuncDecl *ASTContext::getOverflowingIntegerMultiplyDecl() const {
+  if (Impl.OverflowingIntegerMultiplyDecl)
+    return Impl.OverflowingIntegerMultiplyDecl;
+
+  if (auto funcDecl = getOverflowingIntegerArithmeticOperatorDecl(this, "&*")) {
+    Impl.OverflowingIntegerMultiplyDecl = funcDecl;
+    return funcDecl;
+  }
+  return nullptr;
+}
+
+FuncDecl *ASTContext::getOverflowingIntegerAddDecl() const {
+  if (Impl.OverflowingIntegerAddDecl)
+    return Impl.OverflowingIntegerAddDecl;
+
+  if (auto funcDecl = getOverflowingIntegerArithmeticOperatorDecl(this, "&+")) {
+    Impl.OverflowingIntegerAddDecl = funcDecl;
+    return funcDecl;
   }
   return nullptr;
 }
