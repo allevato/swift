@@ -222,6 +222,32 @@ bool IterativeTypeChecker::breakCycleForTypeCheckRawType(EnumDecl *enumDecl) {
 }
 
 //===----------------------------------------------------------------------===//
+// Enum element argument type handling
+//===----------------------------------------------------------------------===//
+bool IterativeTypeChecker::isTypeCheckArgumentTypeSatisfied(
+    EnumElementDecl *payload) {
+  return payload->getArgumentTypeLoc().isNull() ||
+    !payload->getArgumentType().isNull();
+}
+
+void IterativeTypeChecker::processTypeCheckArgumentType(
+    EnumElementDecl *enumElementDecl,
+    UnsatisfiedDependency unsatisfiedDependency) {
+  auto typeRepr = enumElementDecl->getArgumentTypeLoc().getTypeRepr();
+  auto dc = enumElementDecl->getDeclContext();
+  Type argumentType =
+    TC.resolveType(typeRepr, dc, TR_EnumCase, nullptr, &unsatisfiedDependency);
+  enumElementDecl->getArgumentTypeLoc().setType(argumentType);
+}
+
+bool IterativeTypeChecker::breakCycleForTypeCheckArgumentType(
+    EnumElementDecl *enumElementDecl) {
+  enumElementDecl->getArgumentTypeLoc().setType(
+    ErrorType::get(getASTContext()));
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
 // Inherited protocols
 //===----------------------------------------------------------------------===//
 bool IterativeTypeChecker::isInheritedProtocolsSatisfied(ProtocolDecl *payload){

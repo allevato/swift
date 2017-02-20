@@ -42,6 +42,9 @@ TYPE_CHECK_REQUEST(TypeCheckSuperclass, Class)
 /// Perform type checking on the raw type of a particular enum.
 TYPE_CHECK_REQUEST(TypeCheckRawType, Enum)
 
+/// Perform type checking on the argument type of a particular enum element.
+TYPE_CHECK_REQUEST(TypeCheckArgumentType, EnumElement)
+
 /// Compute the set of inherited protocols for a given protocol.
 TYPE_CHECK_REQUEST(InheritedProtocols, Protocol)
 

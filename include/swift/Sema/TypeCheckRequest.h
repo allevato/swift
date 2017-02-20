@@ -32,6 +32,7 @@ namespace swift {
 class ClassDecl;
 class DeclContext;
 class EnumDecl;
+class EnumElementDecl;
 class ExtensionDecl;
 class ProtocolDecl;
 class TypeDecl;
@@ -128,6 +129,9 @@ public:
       break;
     case PayloadKind::Enum:
       Payload.Enum = T.Payload.Enum;
+    break;
+    case PayloadKind::EnumElement:
+      Payload.EnumElement = T.Payload.EnumElement;
       break;
     case PayloadKind::InheritedClauseEntry:
       new (&Payload.InheritedClauseEntry)

@@ -34,6 +34,7 @@
 
 TYPE_CHECK_REQUEST_PAYLOAD(Class, ClassDecl *)
 TYPE_CHECK_REQUEST_PAYLOAD(Enum, EnumDecl *)
+TYPE_CHECK_REQUEST_PAYLOAD(EnumElement, EnumElementDecl *)
 TYPE_CHECK_REQUEST_PAYLOAD(InheritedClauseEntry, std::pair<llvm::PointerUnion<TypeDecl *, ExtensionDecl *>, unsigned>)
 TYPE_CHECK_REQUEST_PAYLOAD(Protocol, ProtocolDecl *)
 TYPE_CHECK_REQUEST_PAYLOAD(DeclContextLookup, DeclContextLookupInfo)

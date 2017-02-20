@@ -271,6 +271,11 @@ void TypeChecker::validateWhereClauses(ProtocolDecl *protocol) {
   }
 }
 
+void TypeChecker::resolveArgumentType(EnumElementDecl *enumElementDecl) {
+  IterativeTypeChecker ITC(*this);
+  ITC.satisfy(requestTypeCheckArgumentType(enumElementDecl));
+}
+
 void TypeChecker::resolveInheritedProtocols(ProtocolDecl *protocol) {
   IterativeTypeChecker ITC(*this);
   ITC.satisfy(requestInheritedProtocols(protocol));

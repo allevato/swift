@@ -1365,6 +1365,9 @@ public:
   /// Resolve the raw type of the given enum.
   void resolveRawType(EnumDecl *enumDecl) override;
 
+  /// Resolve the argument type of the given enum element.
+  void resolveArgumentType(EnumElementDecl *enumElementDecl) override;
+
   /// Resolve the inherited protocols of a given protocol.
   void resolveInheritedProtocols(ProtocolDecl *protocol) override;
 

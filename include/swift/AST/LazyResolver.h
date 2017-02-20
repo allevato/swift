@@ -25,6 +25,7 @@ namespace swift {
 class AssociatedTypeDecl;
 class Decl;
 class DeclContext;
+class EnumElementDecl;
 class ExtensionDecl;
 class Identifier;
 class NominalTypeDecl;
@@ -75,6 +76,9 @@ public:
 
   /// Resolve the raw type of the given enum.
   virtual void resolveRawType(EnumDecl *enumDecl) = 0;
+
+  /// Resolve the argument type of the given enum element.
+  virtual void resolveArgumentType(EnumElementDecl *enumElementDecl) = 0;
 
   /// Resolve the inherited protocols of a given protocol.
   virtual void resolveInheritedProtocols(ProtocolDecl *protocol) = 0;
@@ -141,6 +145,10 @@ public:
 
   void resolveRawType(EnumDecl *enumDecl) override {
     Principal.resolveRawType(enumDecl);
+  }
+
+  void resolveArgumentType(EnumElementDecl *enumElementDecl) override {
+    Principal.resolveArgumentType(enumElementDecl);
   }
 
   void resolveInheritedProtocols(ProtocolDecl *protocol) override {

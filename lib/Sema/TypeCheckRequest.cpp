@@ -28,6 +28,7 @@ SourceLoc TypeCheckRequest::getLoc() const {
 
   DELEGATE_GET_LOC(Class)
   DELEGATE_GET_LOC(Enum)
+  DELEGATE_GET_LOC(EnumElement)
 
   case PayloadKind::InheritedClauseEntry: {
     auto payload = getInheritedClauseEntryPayload();
@@ -66,6 +67,7 @@ Decl *TypeCheckRequest::getAnchor() const {
 
   DECL_PAYLOAD(Class)
   DECL_PAYLOAD(Enum)
+  DECL_PAYLOAD(EnumElement)
 
   case PayloadKind::InheritedClauseEntry: {
     auto payload = getInheritedClauseEntryPayload();
