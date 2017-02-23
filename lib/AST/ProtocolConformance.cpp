@@ -890,16 +890,19 @@ void NominalTypeDecl::prepareConformanceTable() const {
   }
 
   // Add any synthesized conformances.
-  if (auto theEnum = dyn_cast<EnumDecl>(mutableThis)) {
-    if (theEnum->hasCases() && theEnum->hasOnlyCasesWithoutAssociatedValues()) {
-      // Simple enumerations conform to Equatable.
+  if (isa<ClassDecl>(this)) {
+    // FIXME: This is going away soon.
+    if (auto anyObject = getASTContext().getProtocol(
+                           KnownProtocolKind::AnyObject)) {
+      ConformanceTable->addSynthesizedConformance(mutableThis, anyObject);
+    }
+  } else if (auto theEnum = dyn_cast<EnumDecl>(mutableThis)) {
+    if (theEnum->hasCases()
+        && theEnum->hasOnlyCasesWithoutAssociatedValues()) {
       if (auto equatable = ctx.getProtocol(KnownProtocolKind::Equatable)) {
         ConformanceTable->addSynthesizedConformance(mutableThis, equatable);
       }
-
-      // Simple enumerations conform to Hashable.
-      if (auto hashable = getASTContext().getProtocol(
-                            KnownProtocolKind::Hashable)) {
+      if (auto hashable = ctx.getProtocol(KnownProtocolKind::Hashable)) {
         ConformanceTable->addSynthesizedConformance(mutableThis, hashable);
       }
     }

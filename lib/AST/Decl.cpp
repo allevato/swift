@@ -2095,13 +2095,14 @@ bool NominalTypeDecl::derivesProtocolConformance(ProtocolDecl *protocol) const {
     case KnownProtocolKind::RawRepresentable:
       return enumDecl->hasRawType();
     
-    // Enums without associated values can implicitly derive Equatable and
-    // Hashable conformance.
+    // Enums can implicitly derive Equatable and Hashable conformance if their
+    // cases either have no payloads or have payloads where all arguments
+    // conform to that protocol.
     case KnownProtocolKind::Equatable:
     case KnownProtocolKind::Hashable:
       return enumDecl->hasCases()
-          && enumDecl->hasOnlyCasesWithoutAssociatedValues();
-
+          && enumDecl->allAssociatedValuesConformIfPresent(protocol);
+    
     // @objc enums can explicitly derive their _BridgedNSError conformance.
     case KnownProtocolKind::BridgedNSError:
       return isObjC() && enumDecl->hasCases()
