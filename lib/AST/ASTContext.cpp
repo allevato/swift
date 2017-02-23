@@ -178,6 +178,9 @@ struct ASTContext::Implementation {
   /// func &+ <T: _IntegerArithmetic>(T, T) -> T
   FuncDecl *OverflowingIntegerAddDecl = nullptr;
 
+  // func && (Bool, @autoclosure () throws -> Bool) rethrows -> Bool
+  FuncDecl *BoolShortCircuitingAndDecl = nullptr;
+
   /// func _unimplementedInitializer(className: StaticString).
   FuncDecl *UnimplementedInitializerDecl = nullptr;
 
@@ -1026,6 +1029,59 @@ FuncDecl *ASTContext::getArrayReserveCapacityDecl() const {
   return nullptr;
 }
 
+FuncDecl *ASTContext::getBoolShortCircuitingAndDecl() const {
+  if (Impl.BoolShortCircuitingAndDecl)
+    return Impl.BoolShortCircuitingAndDecl;
+  
+  auto boolType = getBoolDecl()->getDeclaredType();
+  SmallVector<ValueDecl *, 30> andFuncs;
+  lookupInSwiftModule("&&", andFuncs);
+  
+  // Find the overload for Int.
+  for (ValueDecl *vd : andFuncs) {
+    // All "&&" decls should be functions, but who knows...
+    FuncDecl *funcDecl = dyn_cast<FuncDecl>(vd);
+    if (!funcDecl)
+      continue;
+    
+    if (funcDecl->getDeclContext()->isTypeContext()) {
+      auto contextTy = funcDecl->getDeclContext()->getDeclaredInterfaceType();
+      if (!contextTy->isEqual(boolType)) continue;
+    }
+
+    if (auto resolver = getLazyResolver())
+      resolver->resolveDeclSignature(funcDecl);
+    
+    Type input, resultType;
+    if (!isNonGenericIntrinsic(funcDecl, /*allowTypeMembers=*/true, input,
+                               resultType))
+      continue;
+    
+    // Check for the signature:
+    // (Bool, @autoclosure () throws -> Bool) rethrows -> Bool
+    auto tupleType = dyn_cast<TupleType>(input.getPointer());
+    assert(tupleType);
+    if (tupleType->getNumElements() != 2)
+      continue;
+    auto argType1 = tupleType->getElementType(0);
+    auto argClosureType2 = tupleType->getElementType(1)->getAs<FunctionType>();
+    if (argClosureType2 == nullptr)
+      continue;
+    auto argType2 = argClosureType2->getResult();
+    
+    if (funcDecl->hasThrows() &&
+        argType1->isEqual(boolType) &&
+        argType2->isEqual(boolType) &&
+        argClosureType2->isAutoClosure() &&
+        argClosureType2->throws() &&
+        resultType->isEqual(boolType)) {
+      Impl.BoolShortCircuitingAndDecl = funcDecl;
+      return funcDecl;
+    }
+  }
+  return nullptr;
+}
+
 /// Returns the binary operator with the given name and signature (T, T) -> T,
 /// where T is constrained by _IntegerArithmetic.
 /// \p ctx The AST context.
@@ -1064,7 +1120,7 @@ getOverflowingIntegerArithmeticOperatorDecl(const ASTContext *ctx,
       resolver->resolveDeclSignature(funcDecl);
 
     auto genericFnType =
-    funcDecl->getInterfaceType()->getAs<GenericFunctionType>();
+      funcDecl->getInterfaceType()->getAs<GenericFunctionType>();
     if (!genericFnType)
       continue;
 

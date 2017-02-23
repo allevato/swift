@@ -471,6 +471,10 @@ public:
   /// Array.reserveCapacityForAppend(newElementsCount: Int)
   FuncDecl *getArrayReserveCapacityDecl() const;
 
+  /// Retrieve the declaration of
+  /// Bool.&& (Bool, @autoclosure () throws -> Bool) rethrows -> Bool.
+  FuncDecl *getBoolShortCircuitingAndDecl() const;
+
   /// Retrieve the declaration of Swift._unimplementedInitializer.
   FuncDecl *getUnimplementedInitializerDecl(LazyResolver *resolver) const;
 
