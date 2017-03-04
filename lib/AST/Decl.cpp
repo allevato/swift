@@ -2101,7 +2101,7 @@ bool NominalTypeDecl::derivesProtocolConformance(ProtocolDecl *protocol) const {
     case KnownProtocolKind::Equatable:
     case KnownProtocolKind::Hashable:
       return enumDecl->hasCases()
-          && enumDecl->allAssociatedValuesConformIfPresent(protocol);
+          && enumDecl->allAssociatedValuesConformToProtocol(protocol);
     
     // @objc enums can explicitly derive their _BridgedNSError conformance.
     case KnownProtocolKind::BridgedNSError:
@@ -2799,9 +2799,8 @@ static bool typeConformsToProtocol(Type type, ProtocolDecl *protocol) {
   return false;
 }
 
-bool EnumDecl::allAssociatedValuesConformIfPresent(
-        ProtocolDecl *protocol) const {
-  // FIXME: Cache this.
+bool
+EnumDecl::allAssociatedValuesConformToProtocolSlow(ProtocolDecl *protocol) {
   // FIXME: Handle recursive value types (via indirect enum cases).
   bool hasElements = false;
   for (auto elt : getAllElements()) {
@@ -2825,6 +2824,7 @@ bool EnumDecl::allAssociatedValuesConformIfPresent(
       }
     }
   }
+
   return hasElements;
 }
 

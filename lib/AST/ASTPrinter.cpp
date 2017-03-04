@@ -2081,7 +2081,7 @@ void PrintAST::printInherited(const Decl *decl,
         // no-payload enum with cases or by having payloads that also conform to
         // those protocols.
         if (Enum->hasCases()
-            && Enum->allAssociatedValuesConformIfPresent(Proto)
+            && Enum->allAssociatedValuesConformToProtocol(Proto)
             && (Proto->isSpecificProtocol(KnownProtocolKind::Equatable)
                 || Proto->isSpecificProtocol(KnownProtocolKind::Hashable)))
           continue;

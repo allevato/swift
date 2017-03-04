@@ -47,7 +47,7 @@ static bool canDeriveConformance(NominalTypeDecl *type,
 
   // The enum must not have associated values or only have associated values
   // that conform to the protocol.
-  if (!enumDecl->allAssociatedValuesConformIfPresent(protocol))
+  if (!enumDecl->allAssociatedValuesConformToProtocol(protocol))
     return false;
   
   return true;

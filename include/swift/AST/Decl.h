@@ -2968,6 +2968,9 @@ class EnumDecl : public NominalTypeDecl {
     llvm::PointerIntPair<Type, 1, bool> RawType;
   } LazySemanticInfo;
 
+  /// Caches knowledge about conformances that can/cannot be derived.
+  llvm::DenseMap<ProtocolDecl*, bool> DerivableConformancesCache;
+
   friend class IterativeTypeChecker;
 
 public:
@@ -3098,11 +3101,24 @@ public:
   /// Note that this is true for enums with absolutely no cases.
   bool hasOnlyCasesWithoutAssociatedValues() const;
 
-  /// True if the enum has cases and those cases either have no associated
-  /// values, or all of the associated values conform to the given protocol.
+  /// True if the given protocol can be derived because the enum has cases and
+  /// those cases either have no associated values, or all of the associated
+  /// values conform to the given protocol.
   ///
   /// Note that this is false for enums with absolutely no cases.
-  bool allAssociatedValuesConformIfPresent(ProtocolDecl *protocol) const;
+  bool allAssociatedValuesConformToProtocol(ProtocolDecl *protocol) const {
+    auto it = DerivableConformancesCache.find(protocol);
+    if (it != DerivableConformancesCache.end())
+      return it->getSecond();
+
+    auto mutableThis = const_cast<EnumDecl *>(this);
+    bool canDerive =
+        mutableThis->allAssociatedValuesConformToProtocolSlow(protocol);
+    mutableThis->DerivableConformancesCache[protocol] = canDerive;
+    return canDerive;
+  }
+
+  bool allAssociatedValuesConformToProtocolSlow(ProtocolDecl *protocol);
 
   /// True if the enum has cases.
   bool hasCases() const {
