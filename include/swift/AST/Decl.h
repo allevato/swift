@@ -53,6 +53,7 @@ namespace swift {
   class Type;
   class Expr;
   class DeclRefExpr;
+  class FileUnit;
   class ForeignErrorConvention;
   class LiteralExpr;
   class FuncDecl;
@@ -847,6 +848,8 @@ public:
   RawComment getRawComment() const;
 
   Optional<StringRef> getGroupName() const;
+
+  const FileUnit* getSourceFileUnit() const;
 
   Optional<StringRef> getSourceFileName() const;
 

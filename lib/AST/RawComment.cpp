@@ -182,6 +182,16 @@ Optional<StringRef> Decl::getGroupName() const {
   return None;
 }
 
+const FileUnit* Decl::getSourceFileUnit() const {
+  if (hasClangNode())
+    return nullptr;
+  if (auto GroupD = getGroupDecl(this)) {
+    // We can only get group information from deserialized module files.
+    return dyn_cast<FileUnit>(GroupD->getDeclContext()->getModuleScopeContext());
+  }
+  return nullptr;
+}
+
 Optional<StringRef> Decl::getSourceFileName() const {
   if (hasClangNode())
     return None;
