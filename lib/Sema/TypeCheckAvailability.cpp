@@ -1890,6 +1890,14 @@ void TypeChecker::diagnoseIfDeprecated(SourceRange ReferenceRange,
     return;
   }
 
+  // Don't report deprecation warnings if the reference to the deprecated member
+  // is within the same file as the member.
+  auto DeclFile = DeprecatedDecl->getSourceFileUnit();
+  auto ReferenceFile = ReferenceDC->getParentSourceFile();
+  if (DeclFile == ReferenceFile) {
+    return;
+  }
+  
   if (!Context.LangOpts.DisableAvailabilityChecking) {
     AvailabilityContext RunningOSVersions =
         overApproximateAvailabilityAtLocation(ReferenceRange.Start,ReferenceDC);
