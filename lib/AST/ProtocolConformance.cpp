@@ -890,13 +890,7 @@ void NominalTypeDecl::prepareConformanceTable() const {
   }
 
   // Add any synthesized conformances.
-  if (isa<ClassDecl>(this)) {
-    // FIXME: This is going away soon.
-    if (auto anyObject = getASTContext().getProtocol(
-                           KnownProtocolKind::AnyObject)) {
-      ConformanceTable->addSynthesizedConformance(mutableThis, anyObject);
-    }
-  } else if (auto theEnum = dyn_cast<EnumDecl>(mutableThis)) {
+  if (auto theEnum = dyn_cast<EnumDecl>(mutableThis)) {
     if (theEnum->hasCases()
         && theEnum->hasOnlyCasesWithoutAssociatedValues()) {
       if (auto equatable = ctx.getProtocol(KnownProtocolKind::Equatable)) {

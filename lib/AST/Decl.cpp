@@ -2805,7 +2805,7 @@ EnumDecl::allAssociatedValuesConformToProtocolSlow(ProtocolDecl *protocol) {
   bool hasElements = false;
   for (auto elt : getAllElements()) {
     hasElements = true;
-    auto argumentType = elt->getArgumentType();
+    auto argumentType = elt->getArgumentTypeLoc().getType();
     if (argumentType.isNull())
       continue;
     if (auto tupleType = argumentType->getAs<TupleType>()) {

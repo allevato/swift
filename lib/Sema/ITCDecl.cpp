@@ -227,7 +227,7 @@ bool IterativeTypeChecker::breakCycleForTypeCheckRawType(EnumDecl *enumDecl) {
 bool IterativeTypeChecker::isTypeCheckArgumentTypeSatisfied(
     EnumElementDecl *payload) {
   return payload->getArgumentTypeLoc().isNull() ||
-    !payload->getArgumentType().isNull();
+    !payload->getArgumentTypeLoc().getType().isNull();
 }
 
 void IterativeTypeChecker::processTypeCheckArgumentType(

@@ -86,7 +86,7 @@ enumElementPayloadSubpattern(EnumElementDecl *enumElementDecl,
   auto parentDC = enumElementDecl->getDeclContext();
   ASTContext &C = parentDC->getASTContext();
   
-  auto argumentType = enumElementDecl->getArgumentType();
+  auto argumentType = enumElementDecl->getArgumentTypeLoc().getType();
   if (argumentType.isNull())
     // No arguments, so no subpattern to match.
     return nullptr;
@@ -202,7 +202,7 @@ static void deriveBodyEquatable_enum_eq(AbstractFunctionDecl *eqDecl) {
                                    SourceLoc(), nullptr);
 
     Expr *lastExpr = nullptr;
-    if (elt->getArgumentType().isNull()) {
+    if (elt->getArgumentTypeLoc().getType().isNull()) {
       // If there aren't any associated values, we just make the result true
       // because the cases matched.
       lastExpr = new (C) BooleanLiteralExpr(true, SourceLoc(),
