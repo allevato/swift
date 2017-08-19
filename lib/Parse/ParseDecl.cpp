@@ -983,8 +983,28 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
     clang::VersionTuple Introduced, Deprecated, Obsoleted;
     SourceRange IntroducedRange, DeprecatedRange, ObsoletedRange;
     auto PlatformAgnostic = PlatformAgnosticAvailabilityKind::None;
+    auto PlatformAgnosticAccessibility = Accessibility::Private;
     bool AnyAnnotations = false;
     int ParamIndex = 0;
+
+    // Consumes an optional accessibility specifier token for a deprecated or
+    // unavailable declaration and returns the accessibility.
+    auto findOptionalAccessibility = [&]() -> Optional<Accessibility> {
+      if (Tok.getKind() == tok::kw_public) {
+        consumeToken();
+        return Accessibility::Public;
+      } else if (Tok.getKind() == tok::kw_internal) {
+        consumeToken();
+        return Accessibility::Internal;
+      } else if (Tok.getKind() == tok::kw_fileprivate) {
+        consumeToken();
+        return Accessibility::FilePrivate;
+      } else if (Tok.getKind() == tok::kw_private) {
+        consumeToken();
+        return Accessibility::Private;
+      }
+      return None;
+    };
 
     while (consumeIf(tok::comma)) {
       AnyAnnotations = true;
@@ -1071,7 +1091,9 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
         break;
       }
 
-      case IsDeprecated:
+      case IsDeprecated: {
+        auto OptionalAccessibility = findOptionalAccessibility();
+
         if (!findAttrValueDelimiter()) {
           if (PlatformAgnostic != PlatformAgnosticAvailabilityKind::None) {
             diagnose(Tok, diag::attr_availability_unavailable_deprecated,
@@ -1079,9 +1101,14 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
           }
 
           PlatformAgnostic = PlatformAgnosticAvailabilityKind::Deprecated;
+          if (OptionalAccessibility) {
+            // TODO: Emit an error if Platform != none.
+            PlatformAgnosticAccessibility = OptionalAccessibility.getValue();
+          }
           break;
         }
         LLVM_FALLTHROUGH;
+      }
 
       case IsIntroduced:
       case IsObsoleted: {
@@ -1117,14 +1144,21 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
         break;
       }
 
-      case IsUnavailable:
+      case IsUnavailable: {
+        auto OptionalAccessibility = findOptionalAccessibility();
+
         if (PlatformAgnostic != PlatformAgnosticAvailabilityKind::None) {
           diagnose(Tok, diag::attr_availability_unavailable_deprecated,
                    AttrName);
         }
 
         PlatformAgnostic = PlatformAgnosticAvailabilityKind::Unavailable;
+        if (OptionalAccessibility) {
+          // TODO: Emit an error if Platform != none.
+          PlatformAgnosticAccessibility = OptionalAccessibility.getValue();
+        }
         break;
+      }
 
       case IsInvalid:
         llvm_unreachable("handled above");
