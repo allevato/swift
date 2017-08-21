@@ -2096,6 +2096,7 @@ void Serializer::writeDeclAttribute(const DeclAttribute *DA) {
         theAttr->isImplicit(),
         theAttr->isUnconditionallyUnavailable(),
         theAttr->isUnconditionallyDeprecated(),
+        static_cast<unsigned>(theAttr->PlatformAgnosticAccessibility),
         LIST_VER_TUPLE_PIECES(Introduced),
         LIST_VER_TUPLE_PIECES(Deprecated),
         LIST_VER_TUPLE_PIECES(Obsoleted),

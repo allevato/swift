@@ -1378,6 +1378,7 @@ namespace decls_block {
     BCFixed<1>, // implicit flag
     BCFixed<1>, // is unconditionally unavailable?
     BCFixed<1>, // is unconditionally deprecated?
+    BCVBR<5>,   // platform-agnostic deprecated/unavailable accessibility
     BC_AVAIL_TUPLE, // Introduced
     BC_AVAIL_TUPLE, // Deprecated
     BC_AVAIL_TUPLE, // Obsoleted

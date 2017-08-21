@@ -593,6 +593,7 @@ public:
                    const clang::VersionTuple &Obsoleted,
                    SourceRange ObsoletedRange,
                    PlatformAgnosticAvailabilityKind PlatformAgnostic,
+                   Accessibility PlatformAgnosticAccessibility,
                    bool Implicit)
     : DeclAttribute(DAK_Available, AtLoc, Range, Implicit),
       Message(Message), Rename(Rename),
@@ -600,6 +601,7 @@ public:
       INIT_VER_TUPLE(Deprecated), DeprecatedRange(DeprecatedRange),
       INIT_VER_TUPLE(Obsoleted), ObsoletedRange(ObsoletedRange),
       PlatformAgnostic(PlatformAgnostic),
+      PlatformAgnosticAccessibility(PlatformAgnosticAccessibility),
       Platform(Platform)
   {}
 
@@ -636,6 +638,10 @@ public:
 
   /// Indicates if the declaration has platform-agnostic availability.
   const PlatformAgnosticAvailabilityKind PlatformAgnostic;
+
+  /// Indicates the lowest accessibility at which references to a symbol are
+  /// deprecated or unavailable.
+  const Accessibility PlatformAgnosticAccessibility;
 
   /// The platform of the availability.
   const PlatformKind Platform;

@@ -2246,10 +2246,10 @@ ModuleFile::getDeclChecked(DeclID DID, Optional<DeclContext *> ForcedContext) {
         DEF_VER_TUPLE_PIECES(Introduced);
         DEF_VER_TUPLE_PIECES(Deprecated);
         DEF_VER_TUPLE_PIECES(Obsoleted);
-        unsigned platform, messageSize, renameSize;
+        unsigned platform, messageSize, renameSize, accessibility;
         // Decode the record, pulling the version tuple information.
         serialization::decls_block::AvailableDeclAttrLayout::readRecord(
-            scratch, isImplicit, isUnavailable, isDeprecated,
+            scratch, isImplicit, isUnavailable, isDeprecated, accessibility,
             LIST_VER_TUPLE_PIECES(Introduced),
             LIST_VER_TUPLE_PIECES(Deprecated),
             LIST_VER_TUPLE_PIECES(Obsoleted),
@@ -2283,7 +2283,7 @@ ModuleFile::getDeclChecked(DeclID DID, Optional<DeclContext *> ForcedContext) {
           Introduced, SourceRange(),
           Deprecated, SourceRange(),
           Obsoleted, SourceRange(),
-          platformAgnostic, isImplicit);
+          platformAgnostic, (Accessibility)accessibility, isImplicit);
         break;
 
 #undef DEF_VER_TUPLE_PIECES

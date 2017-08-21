@@ -746,7 +746,7 @@ AvailableAttr::createPlatformAgnostic(ASTContext &C,
     NoVersion, SourceRange(),
     NoVersion, SourceRange(),
     Obsoleted, SourceRange(),
-    Kind, /* isImplicit */ false);
+    Kind, Accessibility::Private, /* isImplicit */ false);
 }
 
 bool AvailableAttr::isActivePlatform(const ASTContext &ctx) const {

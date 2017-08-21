@@ -97,7 +97,7 @@ createAvailableAttr(PlatformKind Platform,
         Introduced, /*IntroducedRange=*/SourceRange(),
         Deprecated, /*DeprecatedRange=*/SourceRange(),
         Obsoleted, /*ObsoletedRange=*/SourceRange(),
-      Inferred.PlatformAgnostic, /*Implicit=*/true);
+      Inferred.PlatformAgnostic,  Accessibility::Private, /*Implicit=*/true);
 }
 
 void AvailabilityInference::applyInferredAvailableAttrs(

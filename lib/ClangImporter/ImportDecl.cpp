@@ -1621,6 +1621,8 @@ static void applyAvailableAttribute(Decl *decl, AvailabilityContext &info,
                                       /*Obsoleted=*/noVersion,
                                       /*ObsoletedRange*/SourceRange(),
                                       PlatformAgnosticAvailabilityKind::None,
+                                      /*PlatformAgnosticAccessibility*/
+                                      Accessibility::Private,
                                       /*Implicit=*/false);
 
   decl->getAttrs().add(AvAttr);
@@ -2159,6 +2161,7 @@ namespace {
             /*Deprecated*/clang::VersionTuple(), SourceRange(),
             /*Obsoleted*/clang::VersionTuple(), SourceRange(),
             PlatformAgnosticAvailabilityKind::SwiftVersionSpecific,
+            /*PlatformAgnosticAccessibility*/Accessibility::Private,
             /*Implicit*/false);
       }
 
@@ -7052,7 +7055,10 @@ void ClangImporter::Implementation::importAttributes(
                                           /*DeprecatedRange=*/SourceRange(),
                                           obsoleted,
                                           /*ObsoletedRange=*/SourceRange(),
-                                          PlatformAgnostic, /*Implicit=*/false);
+                                          PlatformAgnostic,
+                                          /*PlatformAgnosticAccessibility=*/
+                                          Accessibility::Private,
+                                          /*Implicit=*/false);
 
       MappedDecl->getAttrs().add(AvAttr);
 

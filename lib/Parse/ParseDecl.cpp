@@ -965,6 +965,8 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
                                      /*Obsoleted=*/clang::VersionTuple(),
                                      /*ObsoletedRange=*/SourceRange(),
                                      PlatformAgnostic,
+                                     /*PlatformAgnosticAccessibility=*/
+                                     Accessibility::Private,
                                      /*Implicit=*/true));
       }
 
@@ -1208,6 +1210,7 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
                                         Deprecated, DeprecatedRange,
                                         Obsoleted, ObsoletedRange,
                                         PlatformAgnostic,
+                                        PlatformAgnosticAccessibility,
                                         /*Implicit=*/false));
       } else {
         // Not a known platform. Just drop the attribute.
