@@ -1894,6 +1894,40 @@ describeRename(ASTContext &ctx, const AvailableAttr *attr, const ValueDecl *D,
   return ReplacementDeclKind::None;
 }
 
+/// Checks whether a reference to an unavailable/deprecated declaration should
+/// be allowed without warning based on the accessibility in the @available
+/// attribute.
+///
+/// This function is very similar to checkAccessibility in NameLookup.cpp, but
+/// with each accessibility level's check hoisted one level higher.
+static bool checkAvailableAccessibility(const DeclContext *ReferenceDC,
+                                        const DeclContext *ValueDC,
+                                        Accessibility access) {
+  assert(ValueDC && "ValueDecl being accessed must have a valid DeclContext");
+
+  switch (access) {
+  case Accessibility::Private:
+    return false;
+  case Accessibility::FilePrivate:
+    return (ReferenceDC == ValueDC ||
+      AccessScope::allowsPrivateAccess(ReferenceDC, ValueDC));
+  case Accessibility::Internal:
+    return ReferenceDC->getModuleScopeContext() == ValueDC->getModuleScopeContext();
+  case Accessibility::Public: {
+    const ModuleDecl *sourceModule = ValueDC->getParentModule();
+    const DeclContext *useFile = ReferenceDC->getModuleScopeContext();
+    if (useFile->getParentModule() == sourceModule)
+      return true;
+    if (auto *useSF = dyn_cast<SourceFile>(useFile))
+      if (useSF->hasTestableImport(sourceModule))
+        return true;
+    return false;
+  }
+  default:
+    llvm_unreachable("bad Accessibility");
+  }
+}
+
 void TypeChecker::diagnoseIfDeprecated(SourceRange ReferenceRange,
                                        const DeclContext *ReferenceDC,
                                        const ValueDecl *DeprecatedDecl,
@@ -1906,6 +1940,13 @@ void TypeChecker::diagnoseIfDeprecated(SourceRange ReferenceRange,
   // inside declarations that are themselves deprecated on all deployment
   // targets.
   if (isInsideDeprecatedDeclaration(ReferenceRange, ReferenceDC)) {
+    return;
+  }
+
+  // Suppress the deprecation warning if the reference to the deprecated
+  // declaration is within the scope allowed by the attribute's accessibility.
+  if (checkAvailableAccessibility(ReferenceDC, DeprecatedDecl->getDeclContext(),
+                                  Attr->PlatformAgnosticAccessibility)) {
     return;
   }
 
@@ -2100,8 +2141,16 @@ bool TypeChecker::diagnoseExplicitUnavailability(
   case PlatformAgnosticAvailabilityKind::Deprecated:
     break;
 
-  case PlatformAgnosticAvailabilityKind::None:
   case PlatformAgnosticAvailabilityKind::Unavailable:
+    // Suppress the deprecation warning if the reference to the deprecated
+    // declaration is within the scope allowed by the attribute's accessibility.
+    if (checkAvailableAccessibility(DC, D->getDeclContext(),
+                                    Attr->PlatformAgnosticAccessibility)) {
+      return false;
+    }
+    LLVM_FALLTHROUGH;
+
+  case PlatformAgnosticAvailabilityKind::None:
   case PlatformAgnosticAvailabilityKind::SwiftVersionSpecific:
   case PlatformAgnosticAvailabilityKind::UnavailableInSwift: {
     bool inSwift = (Attr->getPlatformAgnosticAvailability() ==
