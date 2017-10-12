@@ -24,6 +24,7 @@
 
 IDENTIFIER(alloc)
 IDENTIFIER(allocWithZone)
+IDENTIFIER(allValues)
 IDENTIFIER(allZeros)
 IDENTIFIER(Any)
 IDENTIFIER(ArrayLiteralElement)
@@ -100,6 +101,7 @@ IDENTIFIER(Type)
 IDENTIFIER(type)
 IDENTIFIER(Value)
 IDENTIFIER(value)
+IDENTIFIER(ValueSequence)
 IDENTIFIER_WITH_NAME(value_, "_value")
 IDENTIFIER(with)
 
