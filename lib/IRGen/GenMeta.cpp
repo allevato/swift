@@ -5062,6 +5062,7 @@ SpecialProtocol irgen::getSpecialProtocolID(ProtocolDecl *P) {
   case KnownProtocolKind::CodingKey:
   case KnownProtocolKind::Encodable:
   case KnownProtocolKind::Decodable:
+  case KnownProtocolKind::ValueEnumerable:
     return SpecialProtocol::None;
   }
 

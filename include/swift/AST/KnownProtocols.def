@@ -65,6 +65,7 @@ PROTOCOL_(SwiftNewtypeWrapper)
 PROTOCOL(CodingKey)
 PROTOCOL(Encodable)
 PROTOCOL(Decodable)
+PROTOCOL(ValueEnumerable)
 
 PROTOCOL_(ObjectiveCBridgeable)
 PROTOCOL_(DestructorSafeContainer)
