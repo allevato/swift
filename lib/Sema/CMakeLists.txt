@@ -24,6 +24,7 @@ add_swift_library(swiftSema STATIC
   DerivedConformanceError.cpp
   DerivedConformanceRawRepresentable.cpp
   DerivedConformances.cpp
+  DerivedConformanceValueEnumerable.cpp
   ITCDecl.cpp
   ITCNameLookup.cpp
   ITCType.cpp

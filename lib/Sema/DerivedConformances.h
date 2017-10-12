@@ -128,6 +128,35 @@ ValueDecl *deriveHashable(TypeChecker &tc,
                           NominalTypeDecl *type,
                           ValueDecl *requirement);
 
+/// Determine if a ValueEnumerable requirement can be derived for a type.
+///
+/// This is implemented for enums without associated values.
+///
+/// \returns True if the requirement can be derived.
+bool canDeriveValueEnumerable(TypeChecker &tc,
+                              NominalTypeDecl *type,
+                              ValueDecl *requirement);
+
+/// Derive a ValueEnumerable requirement for a type.
+///
+/// This is implemented for enums without associated values.
+///
+/// \returns the derived member, which will also be added to the type.
+ValueDecl *deriveValueEnumerable(TypeChecker &tc,
+                                 Decl *parentDecl,
+                                 NominalTypeDecl *type,
+                                 ValueDecl *requirement);
+
+/// Derive a ValueEnumerable type witness for a type.
+///
+/// This is implemented for enums without associated values.
+///
+/// \returns the derived member, which will also be added to the type.
+Type deriveValueEnumerable(TypeChecker &tc,
+                           Decl *parentDecl,
+                           NominalTypeDecl *type,
+                           AssociatedTypeDecl *assocType);
+
 /// Derive a _BridgedNSError requirement for an @objc enum type.
 ///
 /// \returns the derived member, which will also be added to the type.

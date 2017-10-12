@@ -6986,6 +6986,10 @@ ValueDecl *TypeChecker::deriveProtocolRequirement(DeclContext *DC,
   case KnownProtocolKind::Decodable:
     return DerivedConformance::deriveDecodable(*this, Decl, TypeDecl, Requirement);
 
+  case KnownProtocolKind::ValueEnumerable:
+    return DerivedConformance::deriveValueEnumerable(*this, Decl, TypeDecl,
+                                                     Requirement);
+
   default:
     return nullptr;
   }
@@ -7007,7 +7011,11 @@ Type TypeChecker::deriveTypeWitness(DeclContext *DC,
   case KnownProtocolKind::RawRepresentable:
     return DerivedConformance::deriveRawRepresentable(*this, Decl,
                                                       TypeDecl, AssocType);
-        
+
+  case KnownProtocolKind::ValueEnumerable:
+    return DerivedConformance::deriveValueEnumerable(*this, Decl,
+                                                     TypeDecl, AssocType);
+
   default:
     return nullptr;
   }

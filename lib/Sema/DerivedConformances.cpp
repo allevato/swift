@@ -66,6 +66,9 @@ bool DerivedConformance::derivesProtocolConformance(TypeChecker &tc,
         // empty enumas are allowed to conform as well.
         return enumDecl->hasOnlyCasesWithoutAssociatedValues();
       }
+      
+      case KnownProtocolKind::ValueEnumerable:
+        return canDeriveValueEnumerable(tc, enumDecl, protocol);
 
       default:
         return false;
@@ -147,6 +150,9 @@ ValueDecl *DerivedConformance::getDerivableRequirement(TypeChecker &tc,
     if (name.isSimpleName(ctx.Id_intValue))
       return getRequirement(KnownProtocolKind::CodingKey);
 
+    if (name.isSimpleName(ctx.Id_allValues))
+      return getRequirement(KnownProtocolKind::ValueEnumerable);
+
     return nullptr;
   }
 
@@ -191,6 +197,10 @@ ValueDecl *DerivedConformance::getDerivableRequirement(TypeChecker &tc,
     // RawRepresentable.RawValue
     if (name.isSimpleName(ctx.Id_RawValue))
       return getRequirement(KnownProtocolKind::RawRepresentable);
+
+    // ValueEnumerable.ValueSequence
+    if (name.isSimpleName(ctx.Id_ValueSequence))
+      return getRequirement(KnownProtocolKind::ValueEnumerable);
 
     return nullptr;
   }
