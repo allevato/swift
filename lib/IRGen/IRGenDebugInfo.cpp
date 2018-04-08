@@ -306,6 +306,13 @@ private:
   }
 #endif
 
+  std::string remapDebugInfoPath(StringRef Path) const {
+    for (const auto &Entry : Opts.DebugPrefixMap)
+      if (Path.startswith(Entry.first))
+        return (Twine(Entry.second) + Path.substr(Entry.first.size())).str();
+    return Path.str();
+  }
+
   llvm::DIFile *getOrCreateFile(StringRef Filename) {
     if (Filename.empty())
       return MainFile;
@@ -335,7 +342,8 @@ private:
     StringRef File = llvm::sys::path::filename(Filename);
     llvm::SmallString<512> Path(Filename);
     llvm::sys::path::remove_filename(Path);
-    llvm::DIFile *F = DBuilder.createFile(File, Path);
+    llvm::DIFile *F = DBuilder.createFile(remapDebugInfoPath(File),
+                                          remapDebugInfoPath(Path));
 
     // Cache it.
     DIFileCache[Filename] = llvm::TrackingMDNodeRef(F);
@@ -538,7 +546,8 @@ private:
 
     StringRef Sysroot = IGM.Context.SearchPathOpts.SDKPath;
     auto M =
-        DBuilder.createModule(Parent, Name, ConfigMacros, IncludePath, Sysroot);
+        DBuilder.createModule(Parent, Name, ConfigMacros,
+                              remapDebugInfoPath(IncludePath), Sysroot);
     DIModuleCache.insert({Key, llvm::TrackingMDNodeRef(M)});
     return M;
   }
@@ -1480,7 +1489,8 @@ IRGenDebugInfoImpl::IRGenDebugInfoImpl(const IRGenOptions &Opts,
   // Note that File + Dir need not result in a valid path.
   // Clang is doing the same thing here.
   TheCU = DBuilder.createCompileUnit(
-      Lang, DBuilder.createFile(AbsMainFile, Opts.DebugCompilationDir),
+      Lang, DBuilder.createFile(remapDebugInfoPath(AbsMainFile),
+                                remapDebugInfoPath(Opts.DebugCompilationDir)),
       Producer, Opts.shouldOptimize(), Flags, MajorRuntimeVersion, SplitName,
       Opts.DebugInfoKind > IRGenDebugInfoKind::LineTables
           ? llvm::DICompileUnit::FullDebug

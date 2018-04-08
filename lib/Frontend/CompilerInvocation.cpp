@@ -382,6 +382,17 @@ static bool ParseClangImporterArgs(ClangImporterOptions &Opts,
     Opts.ExtraArgs.push_back(A->getValue());
   }
 
+  for (auto A : Args.getAllArgValues(OPT_debug_prefix_map)) {
+    // Forward -debug-prefix-map arguments from Swift to Clang as
+    // -fdebug-prefix-map. This is required to ensure DIFiles created there,
+    // like "<swift-imported-modules>", have their paths remapped properly.
+    // We ignore any malformatted arguments because they've already been
+    // diagnosed by the frontend and we don't want Clang to also emit
+    // diagnostics.
+    if (A.find('=') != StringRef::npos)
+      Opts.ExtraArgs.push_back("-fdebug-prefix-map=" + A);
+  }
+
   if (!workingDirectory.empty()) {
     // Provide a working directory to Clang as well if there are any -Xcc
     // options, in case some of them are search-related. But do it at the
@@ -785,6 +796,14 @@ static bool ParseIRGenArgs(IRGenOptions &Opts, ArgList &Args,
       llvm::sys::fs::current_path(cwd);
       Opts.DebugCompilationDir = cwd.str();
     }
+  }
+
+  for (auto A : Args.getAllArgValues(options::OPT_debug_prefix_map)) {
+    StringRef Map = A;
+    if (Map.find('=') == StringRef::npos)
+      Diags.diagnose(SourceLoc(), diag::error_invalid_debug_prefix_map, Map);
+    else
+      Opts.DebugPrefixMap.insert(StringRef(A).split('='));
   }
 
   for (const Arg *A : Args.filtered(OPT_Xcc)) {
