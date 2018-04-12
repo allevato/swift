@@ -19,13 +19,13 @@
 #define SWIFT_AST_IRGENOPTIONS_H
 
 #include "swift/AST/LinkLibrary.h"
+#include "swift/Basic/PathRemapper.h"
 #include "swift/Basic/Sanitizers.h"
 #include "swift/Basic/OptionSet.h"
 #include "swift/Basic/OptimizationMode.h"
 // FIXME: This include is just for llvm::SanitizerCoverageOptions. We should
 // split the header upstream so we don't include so much.
 #include "llvm/Transforms/Instrumentation.h"
-#include <map>
 #include <string>
 #include <vector>
 
@@ -102,7 +102,7 @@ public:
   IRGenDebugInfoKind DebugInfoKind : 2;
 
   /// Path prefixes that should be rewritten in debug info.
-  std::map<std::string, std::string> DebugPrefixMap;
+  PathRemapper DebugPrefixMap;
 
   /// \brief Whether we're generating IR for the JIT.
   unsigned UseJIT : 1;

@@ -802,8 +802,10 @@ static bool ParseIRGenArgs(IRGenOptions &Opts, ArgList &Args,
     StringRef Map = A;
     if (Map.find('=') == StringRef::npos)
       Diags.diagnose(SourceLoc(), diag::error_invalid_debug_prefix_map, Map);
-    else
-      Opts.DebugPrefixMap.insert(StringRef(A).split('='));
+    else {
+      auto SplitMap = StringRef(A).split('=');
+      Opts.DebugPrefixMap.addMapping(SplitMap.first, SplitMap.second);
+    }
   }
 
   for (const Arg *A : Args.filtered(OPT_Xcc)) {

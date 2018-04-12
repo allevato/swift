@@ -69,6 +69,7 @@ class IRGenDebugInfoImpl : public IRGenDebugInfo {
   SourceManager &SM;
   llvm::DIBuilder DBuilder;
   IRGenModule &IGM;
+  const PathRemapper &DebugPrefixMap;
 
   /// Used for caching SILDebugScopes without inline information.
   using LocalScopeHash = std::pair<const void *, const void *>;
@@ -306,13 +307,6 @@ private:
   }
 #endif
 
-  std::string remapDebugInfoPath(StringRef Path) const {
-    for (const auto &Entry : Opts.DebugPrefixMap)
-      if (Path.startswith(Entry.first))
-        return (Twine(Entry.second) + Path.substr(Entry.first.size())).str();
-    return Path.str();
-  }
-
   llvm::DIFile *getOrCreateFile(StringRef Filename) {
     if (Filename.empty())
       return MainFile;
@@ -342,8 +336,8 @@ private:
     StringRef File = llvm::sys::path::filename(Filename);
     llvm::SmallString<512> Path(Filename);
     llvm::sys::path::remove_filename(Path);
-    llvm::DIFile *F = DBuilder.createFile(remapDebugInfoPath(File),
-                                          remapDebugInfoPath(Path));
+    llvm::DIFile *F = DBuilder.createFile(DebugPrefixMap.remapPath(File),
+                                          DebugPrefixMap.remapPath(Path));
 
     // Cache it.
     DIFileCache[Filename] = llvm::TrackingMDNodeRef(F);
@@ -547,7 +541,7 @@ private:
     StringRef Sysroot = IGM.Context.SearchPathOpts.SDKPath;
     auto M =
         DBuilder.createModule(Parent, Name, ConfigMacros,
-                              remapDebugInfoPath(IncludePath), Sysroot);
+                              DebugPrefixMap.remapPath(IncludePath), Sysroot);
     DIModuleCache.insert({Key, llvm::TrackingMDNodeRef(M)});
     return M;
   }
@@ -1464,7 +1458,8 @@ IRGenDebugInfoImpl::IRGenDebugInfoImpl(const IRGenOptions &Opts,
                                        StringRef MainOutputFilenameForDebugInfo)
     : Opts(Opts), CI(CI), SM(IGM.Context.SourceMgr), DBuilder(M),
       IGM(IGM), MetadataTypeDecl(nullptr), InternalType(nullptr),
-      LastDebugLoc({}), LastScope(nullptr) {
+      LastDebugLoc({}), LastScope(nullptr),
+      DebugPrefixMap(Opts.DebugPrefixMap) {
   assert(Opts.DebugInfoKind > IRGenDebugInfoKind::None &&
          "no debug info should be generated");
   StringRef SourceFileName = MainOutputFilenameForDebugInfo;
@@ -1489,8 +1484,9 @@ IRGenDebugInfoImpl::IRGenDebugInfoImpl(const IRGenOptions &Opts,
   // Note that File + Dir need not result in a valid path.
   // Clang is doing the same thing here.
   TheCU = DBuilder.createCompileUnit(
-      Lang, DBuilder.createFile(remapDebugInfoPath(AbsMainFile),
-                                remapDebugInfoPath(Opts.DebugCompilationDir)),
+      Lang, DBuilder.createFile(
+          DebugPrefixMap.remapPath(AbsMainFile),
+          DebugPrefixMap.remapPath(Opts.DebugCompilationDir)),
       Producer, Opts.shouldOptimize(), Flags, MajorRuntimeVersion, SplitName,
       Opts.DebugInfoKind > IRGenDebugInfoKind::LineTables
           ? llvm::DICompileUnit::FullDebug
