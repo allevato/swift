@@ -89,7 +89,8 @@ namespace {
 class OpaqueArchetypeTypeInfo
   : public ResilientTypeInfo<OpaqueArchetypeTypeInfo>
 {
-  OpaqueArchetypeTypeInfo(llvm::Type *type) : ResilientTypeInfo(type) {}
+  OpaqueArchetypeTypeInfo(llvm::Type *type)
+    : ResilientTypeInfo(type, IsABIAccessible) {}
 
 public:
   static const OpaqueArchetypeTypeInfo *create(llvm::Type *type) {
@@ -99,7 +100,7 @@ public:
   void collectMetadataForOutlining(OutliningMetadataCollector &collector,
                                    SILType T) const override {
     // We'll need formal type metadata for this archetype.
-    collector.collectFormalTypeMetadata(T.getSwiftRValueType());
+    collector.collectTypeMetadataForLayout(T);
   }
 };
 

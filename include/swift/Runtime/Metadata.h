@@ -278,13 +278,15 @@ struct TargetValueBuffer {
 using ValueBuffer = TargetValueBuffer<InProcess>;
 
 /// Can a value with the given size and alignment be allocated inline?
-constexpr inline bool canBeInline(size_t size, size_t alignment) {
-  return size <= sizeof(ValueBuffer) && alignment <= alignof(ValueBuffer);
+constexpr inline bool canBeInline(bool isBitwiseTakable, size_t size,
+                                  size_t alignment) {
+  return isBitwiseTakable && size <= sizeof(ValueBuffer) &&
+         alignment <= alignof(ValueBuffer);
 }
 
 template <class T>
-constexpr inline bool canBeInline() {
-  return canBeInline(sizeof(T), alignof(T));
+constexpr inline bool canBeInline(bool isBitwiseTakable) {
+  return canBeInline(isBitwiseTakable, sizeof(T), alignof(T));
 }
 
 struct ValueWitnessTable;
@@ -345,8 +347,8 @@ struct ValueWitnessTable {
 
   /// Would values of a type with the given layout requirements be
   /// allocated inline?
-  static bool isValueInline(size_t size, size_t alignment) {
-    return (size <= sizeof(ValueBuffer) &&
+  static bool isValueInline(bool isBitwiseTakable, size_t size, size_t alignment) {
+    return (isBitwiseTakable && size <= sizeof(ValueBuffer) &&
             alignment <= alignof(ValueBuffer));
   }
 
@@ -819,22 +821,9 @@ public:
     case MetadataKind::ForeignClass:
       return true;
 
-    case MetadataKind::Function:
-    case MetadataKind::Struct:
-    case MetadataKind::Enum:
-    case MetadataKind::Optional:
-    case MetadataKind::Opaque:
-    case MetadataKind::Tuple:
-    case MetadataKind::Existential:
-    case MetadataKind::Metatype:
-    case MetadataKind::ExistentialMetatype:
-    case MetadataKind::HeapLocalVariable:
-    case MetadataKind::HeapGenericLocalVariable:
-    case MetadataKind::ErrorObject:
+    default:
       return false;
     }
-    
-    swift_runtime_unreachable("Unhandled MetadataKind in switch.");
   }
   
   /// Is this metadata for an existential type?
@@ -843,24 +832,10 @@ public:
     case MetadataKind::ExistentialMetatype:
     case MetadataKind::Existential:
       return true;
-        
-    case MetadataKind::Metatype:
-    case MetadataKind::Class:
-    case MetadataKind::ObjCClassWrapper:
-    case MetadataKind::ForeignClass:
-    case MetadataKind::Struct:
-    case MetadataKind::Enum:
-    case MetadataKind::Optional:
-    case MetadataKind::Opaque:
-    case MetadataKind::Tuple:
-    case MetadataKind::Function:
-    case MetadataKind::HeapLocalVariable:
-    case MetadataKind::HeapGenericLocalVariable:
-    case MetadataKind::ErrorObject:
+
+    default:
       return false;
     }
-
-    swift_runtime_unreachable("Unhandled MetadataKind in switch.");
   }
   
   /// Is this either type metadata or a class object for any kind of class?
@@ -944,20 +919,9 @@ public:
     case MetadataKind::ForeignClass:
       return static_cast<const TargetForeignClassMetadata<Runtime> *>(this)
           ->Description;
-    case MetadataKind::Opaque:
-    case MetadataKind::Tuple:
-    case MetadataKind::Function:
-    case MetadataKind::Existential:
-    case MetadataKind::ExistentialMetatype:
-    case MetadataKind::Metatype:
-    case MetadataKind::ObjCClassWrapper:
-    case MetadataKind::HeapLocalVariable:
-    case MetadataKind::HeapGenericLocalVariable:
-    case MetadataKind::ErrorObject:
+    default:
       return nullptr;
     }
-
-    swift_runtime_unreachable("Unhandled MetadataKind in switch.");
   }
 
   /// Get the class object for this type if it has one, or return null if the
@@ -4154,12 +4118,23 @@ swift_getObjCClassMetadata(const ClassMetadata *theClass);
 SWIFT_RUNTIME_EXPORT
 const ClassMetadata *
 swift_getObjCClassFromMetadata(const Metadata *theClass);
+
+SWIFT_RUNTIME_EXPORT
+const ClassMetadata *
+swift_getObjCClassFromObject(HeapObject *object);
 #endif
 
 /// \brief Fetch a unique type metadata object for a foreign type.
 SWIFT_RUNTIME_EXPORT
 const ForeignTypeMetadata *
 swift_getForeignTypeMetadata(ForeignTypeMetadata *nonUnique);
+
+/// \brief Fetch a unique witness table for a foreign witness table.
+SWIFT_RUNTIME_EXPORT
+const WitnessTable *
+swift_getForeignWitnessTable(const WitnessTable *nonUniqueWitnessCandidate,
+                             const TypeContextDescriptor *forForeignType,
+                             const ProtocolDescriptor *forProtocol);
 
 /// \brief Fetch a uniqued metadata for a tuple type.
 ///
@@ -4291,9 +4266,10 @@ inline int swift_getHeapObjectExtraInhabitantIndex(HeapObject * const* src) {
 #if SWIFT_OBJC_INTEROP
   if (value & ((uintptr_t(1) << ObjCReservedLowBits) - 1))
     return -1;
+  return int(value >> ObjCReservedLowBits);
+#else
+  return int(value);
 #endif
-
-  return (int) (value >> ObjCReservedLowBits);
 }
   
 /// Store an extra inhabitant of a heap object pointer to memory,
@@ -4302,7 +4278,11 @@ inline void swift_storeHeapObjectExtraInhabitant(HeapObject **dest, int index) {
   // This must be consistent with the storeHeapObjectExtraInhabitant
   // implementation in IRGen's ExtraInhabitants.cpp.
 
+#if SWIFT_OBJC_INTEROP
   auto value = uintptr_t(index) << heap_object_abi::ObjCReservedLowBits;
+#else
+  auto value = uintptr_t(index);
+#endif
   *dest = reinterpret_cast<HeapObject*>(value);
 }
 
@@ -4314,9 +4294,15 @@ inline constexpr unsigned swift_getHeapObjectExtraInhabitantCount() {
   using namespace heap_object_abi;
 
   // The runtime needs no more than INT_MAX inhabitants.
+#if SWIFT_OBJC_INTEROP
   return (LeastValidPointerValue >> ObjCReservedLowBits) > INT_MAX
     ? (unsigned)INT_MAX
     : (unsigned)(LeastValidPointerValue >> ObjCReservedLowBits);
+#else
+  return (LeastValidPointerValue) > INT_MAX
+    ? unsigned(INT_MAX)
+    : unsigned(LeastValidPointerValue);
+#endif
 }  
 
 /// Calculate the numeric index of an extra inhabitant of a function
@@ -4384,6 +4370,12 @@ SWIFT_RUNTIME_STDLIB_INTERFACE
 void swift_getFieldAt(
     const Metadata *type, unsigned index,
     std::function<void(llvm::StringRef name, FieldType type)> callback);
+
+#if !NDEBUG
+/// Verify that the given metadata pointer correctly roundtrips its
+/// mangled name through the demangler.
+void verifyMangledNameRoundtrip(const Metadata *metadata);
+#endif
 
 } // end namespace swift
 

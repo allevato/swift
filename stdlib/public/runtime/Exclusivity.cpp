@@ -91,7 +91,7 @@ static void reportExclusivityConflict(ExclusivityFlags oldAction, void *oldPC,
   constexpr unsigned maxAccessDescriptionLength = 50;
   char message[maxMessageLength];
   snprintf(message, sizeof(message),
-           "Simultaneous accesses to 0x%tx, but modification requires "
+           "Simultaneous accesses to 0x%" PRIxPTR ", but modification requires "
            "exclusive access",
            reinterpret_cast<uintptr_t>(pointer));
   fprintf(stderr, "%s.\n", message);
@@ -102,7 +102,7 @@ static void reportExclusivityConflict(ExclusivityFlags oldAction, void *oldPC,
   fprintf(stderr, "%s ", oldAccess);
   if (oldPC) {
     dumpStackTraceEntry(0, oldPC, /*shortOutput=*/true);
-    fprintf(stderr, " (0x%tx).\n", reinterpret_cast<uintptr_t>(oldPC));
+    fprintf(stderr, " (0x%" PRIxPTR ").\n", reinterpret_cast<uintptr_t>(oldPC));
   } else {
     fprintf(stderr, "<unknown>.\n");
   }
@@ -260,6 +260,16 @@ public:
 
     swift_runtime_unreachable("access not found in set");
   }
+
+#ifndef NDEBUG
+  /// Only available with asserts. Intended to be used with
+  /// swift_dumpTrackedAccess().
+  void forEach(std::function<void (Access *)> action) {
+    for (auto *iter = Head; iter != nullptr; iter = iter->getNext()) {
+      action(iter);
+    }
+  }
+#endif
 };
 
 } // end anonymous namespace
@@ -348,3 +358,17 @@ void swift::swift_endAccess(ValueBuffer *buffer) {
 
   getAccessSet().remove(access);
 }
+
+#ifndef NDEBUG
+
+// Dump the accesses that are currently being tracked by the runtime.
+//
+// This is only intended to be used in the debugger.
+void swift::swift_dumpTrackedAccesses() {
+  getAccessSet().forEach([](Access *a) {
+      fprintf(stderr, "Access. Pointer: %p. PC: %p. AccessAction: %s\n",
+              a->Pointer, a->PC, getAccessName(a->getAccessAction()));
+  });
+}
+
+#endif

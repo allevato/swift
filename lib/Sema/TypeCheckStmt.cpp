@@ -377,6 +377,7 @@ public:
   
   template<typename StmtTy>
   bool typeCheckStmt(StmtTy *&S) {
+    PrettyStackTraceStmt trace(TC.Context, "type-checking", S);
     StmtTy *S2 = cast_or_null<StmtTy>(visit(S));
     if (S2 == nullptr)
       return true;
@@ -821,7 +822,7 @@ public:
     // Type-check the subject expression.
     Expr *subjectExpr = S->getSubjectExpr();
     auto resultTy = TC.typeCheckExpression(subjectExpr, DC);
-    auto hadError = !resultTy;
+    auto limitExhaustivityChecks = !resultTy;
     if (Expr *newSubjectExpr = TC.coerceToRValue(subjectExpr))
       subjectExpr = newSubjectExpr;
     S->setSubjectExpr(subjectExpr);
@@ -856,7 +857,7 @@ public:
           // Coerce the pattern to the subject's type.
           if (!subjectType || TC.coercePatternToType(pattern, DC, subjectType,
                                      TypeResolutionFlags::InExpression)) {
-            hadError = true;
+            limitExhaustivityChecks = true;
 
             // If that failed, mark any variables binding pieces of the pattern
             // as invalid to silence follow-on errors.
@@ -907,11 +908,44 @@ public:
         }
         // Check the guard expression, if present.
         if (auto *guard = labelItem.getGuardExpr()) {
-          hadError |= TC.typeCheckCondition(guard, DC);
+          limitExhaustivityChecks |= TC.typeCheckCondition(guard, DC);
           labelItem.setGuardExpr(guard);
         }
       }
-        
+
+      // Check restrictions on '@unknown'.
+      if (caseBlock->hasUnknownAttr()) {
+        if (caseBlock->getCaseLabelItems().size() != 1) {
+          assert(!caseBlock->getCaseLabelItems().empty() &&
+                 "parser should not produce case blocks with no items");
+          TC.diagnose(caseBlock->getLoc(),
+                      diag::unknown_case_multiple_patterns)
+            .highlight(caseBlock->getCaseLabelItems()[1].getSourceRange());
+          limitExhaustivityChecks = true;
+        }
+
+        if (FallthroughDest != nullptr) {
+          if (!caseBlock->isDefault())
+            TC.diagnose(caseBlock->getLoc(), diag::unknown_case_must_be_last);
+          limitExhaustivityChecks = true;
+        }
+
+        const CaseLabelItem &labelItem = caseBlock->getCaseLabelItems().front();
+        if (labelItem.getGuardExpr() && !labelItem.isDefault()) {
+          TC.diagnose(labelItem.getStartLoc(),
+                      diag::unknown_case_where_clause)
+            .highlight(labelItem.getGuardExpr()->getSourceRange());
+        }
+
+        const Pattern *pattern =
+            labelItem.getPattern()->getSemanticsProvidingPattern();
+        if (!isa<AnyPattern>(pattern)) {
+          TC.diagnose(labelItem.getStartLoc(),
+                      diag::unknown_case_must_be_catchall)
+            .highlight(pattern->getSourceRange());
+        }
+      }
+
       // If the previous case fellthrough, similarly check that that case's bindings
       // includes our first label item's pattern bindings and types.
       if (PreviousFallthrough) {
@@ -950,13 +984,13 @@ public:
       // Type-check the body statements.
       PreviousFallthrough = nullptr;
       Stmt *body = caseBlock->getBody();
-      hadError |= typeCheckStmt(body);
+      limitExhaustivityChecks |= typeCheckStmt(body);
       caseBlock->setBody(body);
       previousBlock = caseBlock;
     }
 
     if (!S->isImplicit()) {
-      TC.checkSwitchExhaustiveness(S, DC, /*limitChecking*/hadError);
+      TC.checkSwitchExhaustiveness(S, DC, limitExhaustivityChecks);
     }
 
     return S;
@@ -1288,7 +1322,7 @@ void TypeChecker::checkIgnoredExpr(Expr *E) {
         .highlight(SR1).highlight(SR2);
     } else
       diagnose(fn->getLoc(), diag::expression_unused_result_unknown,
-               valueE->getType())
+               isa<ClosureExpr>(fn), valueE->getType())
         .highlight(SR1).highlight(SR2);
 
     return;

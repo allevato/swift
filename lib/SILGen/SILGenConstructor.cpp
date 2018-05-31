@@ -516,23 +516,22 @@ void SILGenFunction::emitClassConstructorAllocator(ConstructorDecl *ctor) {
 
   // Call the initializer.
   SubstitutionMap subMap;
-  SmallVector<Substitution, 4> subs;
   if (auto *genericEnv = ctor->getGenericEnvironmentOfContext()) {
     auto *genericSig = genericEnv->getGenericSignature();
-    subMap = genericSig->getSubstitutionMap(
+    subMap = SubstitutionMap::get(
+      genericSig,
       [&](SubstitutableType *t) -> Type {
         return genericEnv->mapTypeIntoContext(
           t->castTo<GenericTypeParamType>());
       },
       MakeAbstractConformanceForGenericType());
-    genericSig->getSubstitutions(subMap, subs);
   }
 
   std::tie(initVal, initTy)
     = emitSiblingMethodRef(Loc, selfValue, initConstant, subMap);
 
   SILValue initedSelfValue = emitApplyWithRethrow(Loc, initVal.forward(*this),
-                                                  initTy, subs, args);
+                                                  initTy, subMap, args);
 
   emitProfilerIncrement(ctor->getBody());
 
@@ -886,10 +885,10 @@ static SILValue getBehaviorInitStorageFn(SILGenFunction &SGF,
     
     auto initConstantTy = initFn->getLoweredType().castTo<SILFunctionType>();
     
-    auto param = SILParameterInfo(initTy.getSwiftRValueType(),
+    auto param = SILParameterInfo(initTy.getASTType(),
                         initTy.isAddress() ? ParameterConvention::Indirect_In
                                            : ParameterConvention::Direct_Owned);
-    auto result = SILResultInfo(storageTy.getSwiftRValueType(),
+    auto result = SILResultInfo(storageTy.getASTType(),
                               storageTy.isAddress() ? ResultConvention::Indirect
                                                     : ResultConvention::Owned);
     
@@ -953,7 +952,7 @@ void SILGenFunction::emitMemberInitializers(DeclContext *dc,
         // signature of the type, with replacement archetypes from the
         // constructor's context (which might be in an extension of
         // the type, which adds additional generic requirements).
-        SubstitutionList subs;
+        SubstitutionMap subs;
         auto *genericEnv = dc->getGenericEnvironmentOfContext();
         auto typeGenericSig = nominal->getGenericSignatureOfContext();
 
@@ -961,23 +960,16 @@ void SILGenFunction::emitMemberInitializers(DeclContext *dc,
           // Generate a set of substitutions for the initialization function,
           // whose generic signature is that of the type context, and whose
           // replacement types are the archetypes of the initializer itself.
-          auto subMap = typeGenericSig->getSubstitutionMap(
-                       [&](SubstitutableType *type) {
-                         if (auto gp = type->getAs<GenericTypeParamType>()) {
-                           return genericEnv->mapTypeIntoContext(gp);
-                         }
+          subs = SubstitutionMap::get(
+            typeGenericSig,
+            [&](SubstitutableType *type) {
+              if (auto gp = type->getAs<GenericTypeParamType>()) {
+                return genericEnv->mapTypeIntoContext(gp);
+              }
 
-                         return Type(type);
-                       },
-                       [](CanType dependentType,
-                           Type conformingReplacementType,
-                           ProtocolType *conformedProtocol) {
-                         return ProtocolConformanceRef(
-                                  conformedProtocol->getDecl());
-                       });
-          SmallVector<Substitution, 4> subsVec;
-          typeGenericSig->getSubstitutions(subMap, subsVec);
-          subs = SGM.getASTContext().AllocateCopy(subsVec);
+              return Type(type);
+            },
+            MakeAbstractConformanceForGenericType());
         }
 
         // Get the type of the initialization result, in terms
@@ -1021,8 +1013,9 @@ void SILGenFunction::emitMemberInitializers(DeclContext *dc,
       auto self = emitSelfForMemberInit(*this, var, selfDecl);
       
       auto mark = B.createMarkUninitializedBehavior(var,
-               initFn, init.getSubstitutions(), storageAddr.getValue(),
-               setterFn, getForwardingSubstitutions(), self.getValue(),
+               initFn, init.getSubstitutions(),
+               storageAddr.getValue(),
+               setterFn, getForwardingSubstitutionMap(), self.getValue(),
                getLoweredType(var->getType()).getAddressType());
       
       // The mark instruction stands in for the behavior property.

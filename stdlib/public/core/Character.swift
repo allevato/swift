@@ -477,14 +477,16 @@ extension Character : Comparable {
 }
 
 extension Character: Hashable {
-  /// The character's hash value.
+  // not @inlinable (performance)
+  /// Hashes the essential components of this value by feeding them into the
+  /// given hasher.
   ///
-  /// Hash values are not guaranteed to be equal across different executions of
-  /// your program. Do not save hash values to use during a future execution.
-  @inlinable // FIXME(sil-serialize-all)
-  public var hashValue: Int {
+  /// - Parameter hasher: The hasher to use when combining the components
+  ///   of this instance.
+  @effects(releasenone)
+  public func hash(into hasher: inout Hasher) {
     // FIXME(performance): constructing a temporary string is extremely
     // wasteful and inefficient.
-    return String(self).hashValue
+    hasher.combine(String(self))
   }
 }

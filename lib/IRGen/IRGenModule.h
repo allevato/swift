@@ -357,6 +357,8 @@ public:
     noteUseOfTypeGlobals(type, false, requireMetadata);
   }
 
+  void noteUseOfAnyParentTypeMetadata(NominalTypeDecl *type);
+
 private:
   void noteUseOfTypeGlobals(NominalTypeDecl *type,
                             bool isUseOfMetadata,
@@ -393,6 +395,8 @@ public:
 
   /// Return the effective triple used by clang.
   llvm::Triple getEffectiveClangTriple();
+
+  const llvm::DataLayout &getClangDataLayout();
 };
 
 class ConstantReference {
@@ -764,6 +768,7 @@ private:
   void destroyMetadataLayoutMap();
 
   friend class GenericContextScope;
+  friend class CompletelyFragileScope;
   
 //--- Globals ---------------------------------------------------------------
 public:
@@ -969,13 +974,14 @@ public:
   /// reflection metadata.
   llvm::SetVector<const StructDecl *> ImportedStructs;
 
+  llvm::Constant *getTypeRef(CanType type);
   llvm::Constant *getAddrOfStringForTypeRef(StringRef mangling);
   llvm::Constant *getAddrOfStringForTypeRef(const SymbolicMangling &mangling);
   llvm::Constant *getAddrOfFieldName(StringRef Name);
   llvm::Constant *getAddrOfCaptureDescriptor(SILFunction &caller,
                                              CanSILFunctionType origCalleeType,
                                              CanSILFunctionType substCalleeType,
-                                             SubstitutionList subs,
+                                             SubstitutionMap subs,
                                              const HeapLayout &layout);
   llvm::Constant *getAddrOfBoxDescriptor(CanType boxedType);
 
@@ -1021,6 +1027,8 @@ public:
   llvm::Module *getModule() const;
   llvm::Module *releaseModule();
   llvm::AttributeList getAllocAttrs();
+
+  bool isStandardLibrary() const;
 
 private:
   llvm::Constant *EmptyTupleMetadata = nullptr;

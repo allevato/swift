@@ -14,7 +14,6 @@
 #include "swift/Serialization/SerializedSILLoader.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/ProtocolConformance.h"
-#include "swift/AST/Substitution.h"
 #include "swift/SIL/FormalLinkage.h"
 #include "swift/SIL/SILDebugScope.h"
 #include "swift/SIL/SILModule.h"
@@ -111,6 +110,17 @@ SILModule::~SILModule() {
   // at all.
   for (SILFunction &F : *this)
     F.dropAllReferences();
+}
+
+std::unique_ptr<SILModule>
+SILModule::createEmptyModule(ModuleDecl *M, SILOptions &Options,
+                             bool WholeModule) {
+  return std::unique_ptr<SILModule>(
+      new SILModule(M, Options, M, WholeModule));
+}
+
+ASTContext &SILModule::getASTContext() const {
+  return TheSwiftModule->getASTContext();
 }
 
 void *SILModule::allocate(unsigned Size, unsigned Align) const {
@@ -485,8 +495,17 @@ SILFunction *SILModule::lookUpFunction(SILDeclRef fnRef) {
   return lookUpFunction(name);
 }
 
-bool SILModule::linkFunction(SILFunction *Fun, SILModule::LinkingMode Mode) {
-  return SILLinkerVisitor(*this, getSILLoader(), Mode).processFunction(Fun);
+bool SILModule::loadFunction(SILFunction *F) {
+  SILFunction *NewF = getSILLoader()->lookupSILFunction(F);
+  if (!NewF)
+    return false;
+
+  assert(F == NewF);
+  return true;
+}
+
+bool SILModule::linkFunction(SILFunction *F, SILModule::LinkingMode Mode) {
+  return SILLinkerVisitor(*this, Mode).processFunction(F);
 }
 
 SILFunction *SILModule::findFunction(StringRef Name, SILLinkage Linkage) {
@@ -561,14 +580,6 @@ void SILModule::linkAllFromCurrentModule() {
                                   /*PrimaryFile=*/nullptr);
 }
 
-void SILModule::linkAllWitnessTables() {
-  getSILLoader()->getAllWitnessTables();
-}
-
-void SILModule::linkAllVTables() {
-  getSILLoader()->getAllVTables();
-}
-
 void SILModule::invalidateSILLoaderCaches() {
   getSILLoader()->invalidateCaches();
 }
@@ -622,9 +633,7 @@ SILVTable *SILModule::lookUpVTable(const ClassDecl *C) {
     return R->second;
 
   // If that fails, try to deserialize it. If that fails, return nullptr.
-  SILVTable *Vtbl =
-      SILLinkerVisitor(*this, getSILLoader(), SILModule::LinkingMode::LinkAll)
-          .processClassDecl(C);
+  SILVTable *Vtbl = getSILLoader()->lookupVTable(C);
   if (!Vtbl)
     return nullptr;
 

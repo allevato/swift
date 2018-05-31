@@ -65,11 +65,18 @@ struct IRGenContext {
 
 private:
   IRGenContext(ASTContext &ctx, ModuleDecl *module)
-    : SILMod(SILModule::createEmptyModule(module, SILOpts)),
+    : IROpts(createIRGenOptions()),
+      SILMod(SILModule::createEmptyModule(module, SILOpts)),
       IRGen(IROpts, *SILMod),
       IGM(IRGen, IRGen.createTargetMachine(), /*SourceFile*/ nullptr,
           LLVMContext, "<fake module name>", "<fake output filename>",
           "<fake main input filename>") {}
+
+  static IRGenOptions createIRGenOptions() {
+    IRGenOptions IROpts;
+    IROpts.EnableResilienceBypass = true;
+    return IROpts;
+  }
 
 public:
   static std::unique_ptr<IRGenContext>
@@ -176,7 +183,8 @@ public:
     if (genericParams.size() != args.size())
       return Type();
 
-    auto subMap = genericSig->getSubstitutionMap(
+    auto subMap = SubstitutionMap::get(
+        genericSig,
         [&](SubstitutableType *t) -> Type {
           for (unsigned i = 0, e = genericParams.size(); i < e; ++i) {
             if (t->isEqual(genericParams[i]))

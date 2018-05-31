@@ -2,7 +2,7 @@
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2018 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -32,6 +32,7 @@ import BinaryFloatingPointProperties
 import BitCount
 import ByteSwap
 import COWTree
+import COWArrayGuaranteedParameterOverhead
 import CString
 import CSVParsing
 import Calculator
@@ -50,9 +51,11 @@ import DictTest
 import DictTest2
 import DictTest3
 import DictTest4
+import DictTest4Legacy
 import DictionaryBridge
 import DictionaryCopy
 import DictionaryGroup
+import DictionaryKeysContains
 import DictionaryLiteral
 import DictionaryRemove
 import DictionarySubscriptDefault
@@ -94,6 +97,7 @@ import ObserverClosure
 import ObserverForwarderStruct
 import ObserverPartiallyAppliedMethod
 import ObserverUnappliedMethod
+import OpaqueConsumingUsers
 import OpenClose
 import PartialApplyDynamicType
 import Phonebook
@@ -110,6 +114,8 @@ import ProtocolDispatch2
 import Queue
 import RC4
 import RGBHistogram
+import RandomShuffle
+import RandomValues
 import RangeAssignment
 import RangeIteration
 import RangeReplaceableCollectionPlusDefault
@@ -180,6 +186,7 @@ registerBenchmark(BinaryFloatingPointPropertiesUlp)
 registerBenchmark(BitCount)
 registerBenchmark(ByteSwap)
 registerBenchmark(COWTree)
+registerBenchmark(COWArrayGuaranteedParameterOverhead)
 registerBenchmark(CString)
 registerBenchmark(CSVParsing)
 registerBenchmark(CSVParsingAlt)
@@ -203,9 +210,11 @@ registerBenchmark(Dictionary)
 registerBenchmark(Dictionary2)
 registerBenchmark(Dictionary3)
 registerBenchmark(Dictionary4)
+registerBenchmark(Dictionary4Legacy)
 registerBenchmark(DictionaryBridge)
 registerBenchmark(DictionaryCopy)
 registerBenchmark(DictionaryGroup)
+registerBenchmark(DictionaryKeysContains)
 registerBenchmark(DictionaryLiteral)
 registerBenchmark(DictionaryRemove)
 registerBenchmark(DictionarySubscriptDefault)
@@ -247,6 +256,7 @@ registerBenchmark(ObserverClosure)
 registerBenchmark(ObserverForwarderStruct)
 registerBenchmark(ObserverPartiallyAppliedMethod)
 registerBenchmark(ObserverUnappliedMethod)
+registerBenchmark(OpaqueConsumingUsers)
 registerBenchmark(OpenClose)
 registerBenchmark(PartialApplyDynamicType)
 registerBenchmark(Phonebook)
@@ -264,6 +274,8 @@ registerBenchmark(QueueGeneric)
 registerBenchmark(QueueConcrete)
 registerBenchmark(RC4Test)
 registerBenchmark(RGBHistogram)
+registerBenchmark(RandomShuffle)
+registerBenchmark(RandomValues)
 registerBenchmark(RangeAssignment)
 registerBenchmark(RangeIteration)
 registerBenchmark(RangeReplaceableCollectionPlusDefault)

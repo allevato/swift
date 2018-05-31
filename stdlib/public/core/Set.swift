@@ -160,17 +160,16 @@ public struct Set<Element: Hashable> {
 }
 
 extension Set {
-  /// Creates a new, empty set with at least the specified number of elements'
-  /// worth of buffer.
+  /// Creates an empty set with preallocated space for at least the specified
+  /// number of elements.
   ///
-  /// Use this initializer to avoid repeated reallocations of a set's buffer
-  /// if you know you'll be adding elements to the set after creation. The
-  /// actual capacity of the created set will be the smallest power of 2 that
-  /// is greater than or equal to `minimumCapacity`.
+  /// Use this initializer to avoid intermediate reallocations of a set's
+  /// storage buffer when you know how many elements you'll insert into the set
+  /// after creation.
   ///
   /// - Parameter minimumCapacity: The minimum number of elements that the
   ///   newly created set should be able to store without reallocating its
-  ///   buffer.
+  ///   storage buffer.
   @inlinable // FIXME(sil-serialize-all)
   public init(minimumCapacity: Int) {
     _variantBuffer =
@@ -350,7 +349,7 @@ extension Set: Collection {
   ///
   /// - Complexity: O(1)
   @inlinable // FIXME(sil-serialize-all)
-  public func index(of member: Element) -> Index? {
+  public func firstIndex(of member: Element) -> Index? {
     return _variantBuffer.index(forKey: member)
   }
 
@@ -358,7 +357,15 @@ extension Set: Collection {
   public func _customIndexOfEquatableElement(
      _ member: Element
     ) -> Index?? {
-    return Optional(index(of: member))
+    return Optional(firstIndex(of: member))
+  }
+
+  @inlinable // FIXME(sil-serialize-all)
+  public func _customLastIndexOfEquatableElement(
+     _ member: Element
+    ) -> Index?? {
+    // The first and last elements are the same because each element is unique.
+    return _customIndexOfEquatableElement(member)
   }
 
   /// The number of elements in the set.
@@ -477,25 +484,20 @@ extension Set: Equatable {
 }
 
 extension Set: Hashable {
-  /// The hash value for the set.
+  /// Hashes the essential components of this value by feeding them into the
+  /// given hasher.
   ///
-  /// Two sets that are equal will always have equal hash values.
-  ///
-  /// Hash values are not guaranteed to be equal across different executions of
-  /// your program. Do not save hash values to use during a future execution.
+  /// - Parameter hasher: The hasher to use when combining the components
+  ///   of this instance.
   @inlinable // FIXME(sil-serialize-all)
-  public var hashValue: Int {
+  public func hash(into hasher: inout Hasher) {
     // FIXME(ABI)#177: <rdar://problem/18915294> Cache Set<T> hashValue
-    return _hashValue(for: self)
-  }
-
-  @inlinable // FIXME(sil-serialize-all)
-  public func _hash(into hasher: inout _Hasher) {
     var hash = 0
+    let seed = hasher._generateSeed()
     for member in self {
-      hash ^= _hashValue(for: member)
+      hash ^= member._rawHashValue(seed: seed)
     }
-    hasher.append(hash)
+    hasher.combine(hash)
   }
 }
 
@@ -1779,7 +1781,7 @@ internal struct _NativeSetBuffer<Element> {
     //
     // FIXME: Use an approximation of true per-instance seeding. We can't just
     // use the base address, because COW copies need to share the same seed.
-    let seed = _Hasher._seed
+    let seed = Hasher._seed
     let perturbation = bucketCount
     _storage.seed = (seed.0 ^ UInt64(truncatingIfNeeded: perturbation), seed.1)
   }
@@ -2042,9 +2044,7 @@ extension _NativeSetBuffer where Element: Hashable
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always) // For performance reasons.
   internal func _bucket(_ k: Key) -> Int {
-    var hasher = _Hasher(seed: _storage.seed)
-    hasher.append(k)
-    return hasher.finalize() & _bucketMask
+    return k._rawHashValue(seed: _storage.seed) & _bucketMask
   }
 
   @inlinable // FIXME(sil-serialize-all)
@@ -2829,8 +2829,8 @@ internal enum _VariantSetBuffer<Element: Hashable>: _HashBuffer {
   }
 
 #if _runtime(_ObjC)
-  @inlinable // FIXME(sil-serialize-all)
   @inline(never)
+  @usableFromInline
   internal mutating func migrateDataToNativeBuffer(
     _ cocoaBuffer: _CocoaSetBuffer
   ) {
@@ -2992,8 +2992,8 @@ internal enum _VariantSetBuffer<Element: Hashable>: _HashBuffer {
   }
 
 #if _runtime(_ObjC)
-  @inlinable // FIXME(sil-serialize-all)
   @inline(never)
+  @usableFromInline
   internal static func maybeGetFromCocoaBuffer(
     _ cocoaBuffer: CocoaBuffer, forKey key: Key
   ) -> Value? {
@@ -3653,20 +3653,30 @@ extension Set.Index {
     }
   }
 
+  /// Hashes the essential components of this value by feeding them into the
+  /// given hasher.
+  ///
+  /// - Parameter hasher: The hasher to use when combining the components
+  ///   of this instance.
   @inlinable // FIXME(sil-serialize-all)
-  public var hashValue: Int {
+  public func hash(into hasher: inout Hasher) {
+  #if _runtime(_ObjC)
     if _fastPath(_guaranteedNative) {
-      return _nativeIndex.offset
+      hasher.combine(0 as UInt8)
+      hasher.combine(_nativeIndex.offset)
+      return
     }
-
     switch _value {
     case ._native(let nativeIndex):
-      return nativeIndex.offset
-  #if _runtime(_ObjC)
+      hasher.combine(0 as UInt8)
+      hasher.combine(nativeIndex.offset)
     case ._cocoa(let cocoaIndex):
-      return cocoaIndex.currentKeyIndex
-  #endif
+      hasher.combine(1 as UInt8)
+      hasher.combine(cocoaIndex.currentKeyIndex)
     }
+  #else
+    hasher.combine(_nativeIndex.offset)
+  #endif
   }
 }
 

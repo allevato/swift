@@ -55,7 +55,7 @@ extension String {
   /// `String` type's `init(_:)` initializer.
   ///
   ///     let favemoji = "My favorite emoji is 🎉"
-  ///     if let i = favemoji.utf16.index(where: { $0 >= 128 }) {
+  ///     if let i = favemoji.utf16.firstIndex(where: { $0 >= 128 }) {
   ///         let asciiPrefix = String(favemoji.utf16[..<i])
   ///         print(asciiPrefix)
   ///     }
@@ -265,7 +265,6 @@ extension String {
       self._guts = _guts
     }
 
-    @inlinable // FIXME(sil-serialize-all)
     public var description: String {
       return String(_guts._extractSlice(_encodedOffsetRange))
     }
@@ -303,7 +302,7 @@ extension String {
   /// another string's `utf16` view.
   ///
   ///     let picnicGuest = "Deserving porcupine"
-  ///     if let i = picnicGuest.utf16.index(of: 32) {
+  ///     if let i = picnicGuest.utf16.firstIndex(of: 32) {
   ///         let adjective = String(picnicGuest.utf16[..<i])
   ///         print(adjective)
   ///     }
@@ -323,9 +322,9 @@ extension String {
     // there is no owner and elements are dropped from the end.
     let wholeString = String(utf16._guts)
     guard
-      let start = UTF16Index(_offset: utf16._offset)
+      let start = UTF16Index(encodedOffset: utf16._offset)
         .samePosition(in: wholeString),
-      let end = UTF16Index(_offset: utf16._offset + utf16._length)
+      let end = UTF16Index(encodedOffset: utf16._offset + utf16._length)
         .samePosition(in: wholeString)
       else
     {
@@ -379,7 +378,7 @@ extension String.UTF16View.Index {
   ///
   ///     let cafe = "Café 🍵"
   ///
-  ///     let stringIndex = cafe.index(of: "é")!
+  ///     let stringIndex = cafe.firstIndex(of: "é")!
   ///     let utf16Index = String.Index(stringIndex, within: cafe.utf16)!
   ///
   ///     print(cafe.utf16[...utf16Index])
@@ -393,7 +392,7 @@ extension String.UTF16View.Index {
   public init?(
     _ sourcePosition: String.Index, within target: String.UTF16View
   ) {
-    guard sourcePosition._transcodedOffset == 0 else { return nil }
+    guard sourcePosition.transcodedOffset == 0 else { return nil }
     self.init(encodedOffset: sourcePosition.encodedOffset)
   }
 
@@ -407,7 +406,7 @@ extension String.UTF16View.Index {
   /// position in the string's `unicodeScalars` view.
   ///
   ///     let cafe = "Café 🍵"
-  ///     let i = cafe.utf16.index(of: 32)!
+  ///     let i = cafe.utf16.firstIndex(of: 32)!
   ///     let j = i.samePosition(in: cafe.unicodeScalars)!
   ///     print(cafe.unicodeScalars[..<j])
   ///     // Prints "Café"

@@ -120,25 +120,19 @@ func _compareUnicode(
 // TODO: coalesce many of these into a protocol to simplify the code
 
 extension _SmallUTF8String {
+  @inlinable
   func _compare(_ other: _SmallUTF8String) -> _Ordering {
 #if arch(i386) || arch(arm)
     _conditionallyUnreachable()
 #else
-    if _fastPath(self.isASCII && other.isASCII) {
-      // TODO: fast in-register comparison
-      return self.withUnmanagedASCII { selfView in
-        return other.withUnmanagedASCII { otherView in
-          return _Ordering(signedNotation: selfView.compareASCII(to: otherView))
-        }
-      }
+    // TODO: Ensure normality when adding UTF-8 support
+    _sanityCheck(self.isASCII && other.isASCII, "Need to ensure normality")
+    if self._storage == other._storage { return .equal }
+    for i in 0..<Swift.min(self.count, other.count) {
+      if self[i] < other[i] { return .less }
+      if self[i] > other[i] { return .greater }
     }
-
-    // TODO: fast in-register comparison
-    return self.withUnmanagedUTF16 { selfView in
-      return other.withUnmanagedUTF16 { otherView in
-        return selfView._compare(otherView)
-      }
-    }
+    return self.count < other.count ? .less : .greater
 #endif // 64-bit
   }
   func _compare(_contiguous other: _StringGuts) -> _Ordering {
@@ -937,26 +931,29 @@ extension _UnmanagedString where CodeUnit == UInt8 {
       if _fastPath(
         other._parseRawScalar(startingFrom: idx).0._isNormalizedSuperASCII
       ) {
-       return .less
+        return .less
       }
-    } else {
-      let selfASCIIChar = UInt16(self[idx])
-      _sanityCheck(selfASCIIChar != otherCU, "should be different")
-      if idx+1 == other.count {
-        return _lexicographicalCompare(selfASCIIChar, otherCU)
-      }
-      if _fastPath(other.hasNormalizationBoundary(after: idx)) {
-        return _lexicographicalCompare(selfASCIIChar, otherCU)
-      }
+
+      // Rare pathological case, e.g. Kelvin symbol
+      var selfIterator = _NormalizedCodeUnitIterator(self)
+      return selfIterator.compare(with: _NormalizedCodeUnitIterator(other))
+    }
+
+    let selfASCIIChar = UInt16(self[idx])
+    _sanityCheck(selfASCIIChar != otherCU, "should be different")
+    if idx+1 == other.count {
+      return _lexicographicalCompare(selfASCIIChar, otherCU)
+    }
+    if _fastPath(other.hasNormalizationBoundary(after: idx)) {
+      return _lexicographicalCompare(selfASCIIChar, otherCU)
     }
 
     //
     // Otherwise, need to normalize the segment and then compare
     //
-    let selfASCIIChar = UInt16(self[idx])
     return _compareStringsPostSuffix(
-      selfASCIIChar: selfASCIIChar, otherUTF16: other[idx...]
-      )
+      selfASCIIChar: selfASCIIChar, otherUTF16WithLeadingASCII: other[idx...]
+    )
   }
 }
 
@@ -1008,15 +1005,17 @@ extension BidirectionalCollection where Element == UInt16, SubSequence == Self {
   }
 }
 
+@inline(never) // @outlined
 private func _compareStringsPostSuffix(
   selfASCIIChar: UInt16,
-  otherUTF16: _UnmanagedString<UInt16>
+  otherUTF16WithLeadingASCII: _UnmanagedString<UInt16>
 ) -> _Ordering {
-  let otherCU = otherUTF16[0]
+  let otherCU = otherUTF16WithLeadingASCII[0]
   _sanityCheck(otherCU <= 0x7F, "should be ASCII, otherwise no need to call")
 
-  let segmentEndIdx = otherUTF16._findNormalizationSegmentEnd(startingFrom: 0)
-  let segment = otherUTF16[..<segmentEndIdx]
+  let segmentEndIdx = otherUTF16WithLeadingASCII._findNormalizationSegmentEnd(
+    startingFrom: 0)
+  let segment = otherUTF16WithLeadingASCII[..<segmentEndIdx]
 
   // Fast path: If prenormal, we're done.
   if _Normalization._prenormalQuickCheckYes(segment) {

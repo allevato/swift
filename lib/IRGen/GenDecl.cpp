@@ -79,6 +79,8 @@ bool IRGenerator::tryEnableLazyTypeMetadata(NominalTypeDecl *Nominal) {
   // is not used by the program itself.
   if (!Opts.shouldOptimize())
     return false;
+  if (Opts.UseJIT)
+    return false;
 
   switch (Nominal->getKind()) {
     case DeclKind::Enum:
@@ -483,14 +485,8 @@ void IRGenModule::emitSourceFile(SourceFile &SF, unsigned StartElem) {
   for (auto *localDecl : SF.LocalTypeDecls)
     emitGlobalDecl(localDecl);
 
-  SF.forAllVisibleModules([&](swift::ModuleDecl::ImportedModule import) {
-    swift::ModuleDecl *next = import.second;
-    if (next->getName() == SF.getParentModule()->getName())
-      return;
-
-    next->collectLinkLibraries([this](LinkLibrary linkLib) {
+  SF.collectLinkLibraries([this](LinkLibrary linkLib) {
       this->addLinkLibrary(linkLib);
-    });
   });
 
   if (ObjCInterop)
@@ -554,6 +550,7 @@ emitGlobalList(IRGenModule &IGM, ArrayRef<llvm::WeakTrackingVH> handles,
                                       init, name);
   var->setSection(section);
   var->setAlignment(alignment.getValue());
+  disableAddressSanitizer(IGM, var);
 
   // Mark the variable as used if doesn't have external linkage.
   // (Note that we'd specifically like to not put @llvm.used in itself.)
@@ -1070,7 +1067,6 @@ void IRGenerator::emitGlobalTopLevel(bool emitForParallelEmission) {
     CurrentIGMPtr IGM = getGenModule(decl ? decl->getDeclContext() : nullptr);
     IGM->emitSILGlobalVariable(&v);
   }
-  PrimaryIGM->emitCoverageMapping();
   
   // Emit SIL functions.
   for (SILFunction &f : PrimaryIGM->getSILModule()) {
@@ -1104,6 +1100,9 @@ void IRGenerator::emitGlobalTopLevel(bool emitForParallelEmission) {
     IGM->emitSILProperty(&prop);
   }
   
+  // Emit code coverage mapping data.
+  PrimaryIGM->emitCoverageMapping();
+
   for (auto Iter : *this) {
     IRGenModule *IGM = Iter.second;
     IGM->finishEmitAfterTopLevel();
@@ -1843,36 +1842,41 @@ void irgen::updateLinkageForDefinition(IRGenModule &IGM,
 
 LinkInfo LinkInfo::get(IRGenModule &IGM, const LinkEntity &entity,
                        ForDefinition_t isDefinition) {
-  return LinkInfo::get(IGM, IGM.getSwiftModule(), entity, isDefinition);
+  return LinkInfo::get(UniversalLinkageInfo(IGM), IGM.getSwiftModule(), entity,
+                       isDefinition);
 }
 
 LinkInfo LinkInfo::get(const UniversalLinkageInfo &linkInfo,
                        ModuleDecl *swiftModule, const LinkEntity &entity,
                        ForDefinition_t isDefinition) {
   LinkInfo result;
+  // FIXME: For anything in the standard library, we assume is locally defined.
+  // The only two ways imported interfaces are currently created is via a shims
+  // interface where the ClangImporter will correctly give us the proper DLL
+  // storage for the declaration.  Otherwise, it is from a `@_silgen_name`
+  // attributed declaration, which we explicitly handle elsewhere.  So, in the
+  // case of a standard library build, just assume everything is locally
+  // defined.  Ideally, we would integrate the linkage calculation properly to
+  // avoid this special casing.
+  ForDefinition_t isStdlibOrDefinition =
+      ForDefinition_t(swiftModule->isStdlibModule() || isDefinition);
 
   entity.mangle(result.Name);
-
   std::tie(result.Linkage, result.Visibility, result.DLLStorageClass) =
-      getIRLinkage(linkInfo, entity.getLinkage(isDefinition),
+      getIRLinkage(linkInfo, entity.getLinkage(isStdlibOrDefinition),
                    isDefinition, entity.isWeakImported(swiftModule));
-
   result.ForDefinition = isDefinition;
-
   return result;
 }
 
-LinkInfo LinkInfo::get(const UniversalLinkageInfo &linkInfo,
-                       StringRef name,
-                       SILLinkage linkage,
-                       ForDefinition_t isDefinition,
+LinkInfo LinkInfo::get(const UniversalLinkageInfo &linkInfo, StringRef name,
+                       SILLinkage linkage, ForDefinition_t isDefinition,
                        bool isWeakImported) {
   LinkInfo result;
 
   result.Name += name;
   std::tie(result.Linkage, result.Visibility, result.DLLStorageClass) =
-    getIRLinkage(linkInfo, linkage,
-                 isDefinition, isWeakImported);
+      getIRLinkage(linkInfo, linkage, isDefinition, isWeakImported);
   result.ForDefinition = isDefinition;
   return result;
 }
@@ -1953,7 +1957,7 @@ bool LinkInfo::isUsed(llvm::GlobalValue::LinkageTypes Linkage,
 llvm::GlobalVariable *swift::irgen::createVariable(
     IRGenModule &IGM, LinkInfo &linkInfo, llvm::Type *storageType,
     Alignment alignment, DebugTypeInfo DbgTy, Optional<SILLocation> DebugLoc,
-    StringRef DebugName) {
+    StringRef DebugName, bool inFixedBuffer) {
   auto name = linkInfo.getName();
   llvm::GlobalValue *existingValue = IGM.Module.getNamedGlobal(name);
   if (existingValue) {
@@ -1985,9 +1989,34 @@ llvm::GlobalVariable *swift::irgen::createVariable(
   if (IGM.DebugInfo && !DbgTy.isNull() && linkInfo.isForDefinition())
     IGM.DebugInfo->emitGlobalVariableDeclaration(
         var, DebugName.empty() ? name : DebugName, name, DbgTy,
-        var->hasInternalLinkage(), DebugLoc);
+        var->hasInternalLinkage(), inFixedBuffer, DebugLoc);
 
   return var;
+}
+
+void swift::irgen::disableAddressSanitizer(IRGenModule &IGM, llvm::GlobalVariable *var) {
+  // Add an operand to llvm.asan.globals blacklisting this global variable.
+  llvm::Metadata *metadata[] = {
+    // The global variable to blacklist.
+    llvm::ConstantAsMetadata::get(var),
+    
+    // Source location. Optional, unnecessary here.
+    nullptr,
+    
+    // Name. Optional, unnecessary here.
+    nullptr,
+    
+    // Whether the global is dynamically initialized.
+    llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+      llvm::Type::getInt1Ty(IGM.Module.getContext()), false)),
+    
+    // Whether the global is blacklisted.
+    llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+      llvm::Type::getInt1Ty(IGM.Module.getContext()), true))};
+  
+  auto *globalNode = llvm::MDNode::get(IGM.Module.getContext(), metadata);
+  auto *asanMetadata = IGM.Module.getOrInsertNamedMetadata("llvm.asan.globals");
+  asanMetadata->addOperand(globalNode);
 }
 
 /// Emit a global declaration.
@@ -2096,6 +2125,7 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
   llvm::Type *storageType;
   Size fixedSize;
   Alignment fixedAlignment;
+  bool inFixedBuffer = false;
 
   if (var->isInitializedObject()) {
     assert(ti.isFixedSize(expansion));
@@ -2125,6 +2155,7 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
   } else {
     // Allocate a fixed-size buffer and possibly heap-allocate a payload at
     // runtime if the runtime size of the type does not fit in the buffer.
+    inFixedBuffer = true;
     storageType = getFixedBufferTy();
     fixedSize = Size(DataLayout.getTypeAllocSize(storageType));
     fixedAlignment = Alignment(DataLayout.getABITypeAlignment(storageType));
@@ -2155,20 +2186,21 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
       gvar = createVariable(*this, link, storageTypeWithContainer,
                             fixedAlignment);
     } else {
-      auto DbgTy = DebugTypeInfo::getGlobal(var, storageTypeWithContainer,
-                                            fixedSize, fixedAlignment);
+      StringRef name;
+      Optional<SILLocation> loc;
       if (var->getDecl()) {
-        // If we have the VarDecl, use it for more accurate debugging information.
-        gvar = createVariable(*this, link, storageTypeWithContainer,
-                              fixedAlignment, DbgTy, SILLocation(var->getDecl()),
-                              var->getDecl()->getName().str());
+        // Use the VarDecl for more accurate debugging information.
+        loc = var->getDecl();
+        name = var->getDecl()->getName().str();
       } else {
-        Optional<SILLocation> loc;
         if (var->hasLocation())
           loc = var->getLocation();
-        gvar = createVariable(*this, link, storageTypeWithContainer,
-                              fixedAlignment, DbgTy, loc, var->getName());
+        name = var->getName();
       }
+      auto DbgTy = DebugTypeInfo::getGlobal(var, storageTypeWithContainer,
+                                            fixedSize, fixedAlignment);
+      gvar = createVariable(*this, link, storageTypeWithContainer,
+                            fixedAlignment, DbgTy, loc, name, inFixedBuffer);
     }
     /// Add a zero initializer.
     if (forDefinition)
@@ -2290,11 +2322,19 @@ llvm::Function *IRGenModule::getAddrOfSILFunction(SILFunction *f,
 
   LinkInfo link = LinkInfo::get(*this, entity, forDefinition);
 
-  if (f->getInlineStrategy() == NoInline) {
+  switch (f->getInlineStrategy()) {
+  case NoInline:
     attrs = attrs.addAttribute(signature.getType()->getContext(),
                                llvm::AttributeList::FunctionIndex,
                                llvm::Attribute::NoInline);
+    break;
+  case AlwaysInline:
+    // FIXME: We do not currently transfer AlwaysInline since doing so results
+    // in test failures, which must be investigated first.
+  case InlineDefault:
+    break;
   }
+
   if (isReadOnlyFunction(f)) {
     attrs = attrs.addAttribute(signature.getType()->getContext(),
                                llvm::AttributeList::FunctionIndex,
@@ -2302,6 +2342,14 @@ llvm::Function *IRGenModule::getAddrOfSILFunction(SILFunction *f,
   }
   fn = createFunction(*this, link, signature, insertBefore,
                       f->getOptimizationMode());
+
+  // If `hasCReferences` is true, then the function is either marked with
+  // @_silgen_name OR @_cdecl.  If it is the latter, it must have a definition
+  // associated with it.  The combination of the two allows us to identify the
+  // @_silgen_name functions.  These are locally defined function thunks used in
+  // the standard library.  Do not give them DLLImport DLL Storage.
+  if (useDllStorage() && f->hasCReferences() && !forDefinition)
+    fn->setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
 
   // If we have an order number for this function, set it up as appropriate.
   if (hasOrderNumber) {
@@ -2721,10 +2769,10 @@ llvm::Constant *IRGenModule::emitSwiftProtocols() {
   StringRef sectionName;
   switch (TargetInfo.OutputObjectFormat) {
   case llvm::Triple::MachO:
-    sectionName = "__TEXT, __swift4_protos, regular, no_dead_strip";
+    sectionName = "__TEXT, __swift5_protos, regular, no_dead_strip";
     break;
   case llvm::Triple::ELF:
-    sectionName = "swift4_protocols";
+    sectionName = "swift5_protocols";
     break;
   case llvm::Triple::COFF:
     sectionName = ".sw5prt$B";
@@ -2735,6 +2783,9 @@ llvm::Constant *IRGenModule::emitSwiftProtocols() {
   }
 
   var->setSection(sectionName);
+  
+  disableAddressSanitizer(*this, var);
+  
   addUsedGlobal(var);
   return var;
 }
@@ -2790,7 +2841,8 @@ namespace {
       llvm::Constant *witnessTableVar;
 
       if (Conformance->getConditionalRequirements().empty()) {
-        if (!isDependentConformance(Conformance)) {
+        if (!isDependentConformance(Conformance) &&
+            !Conformance->isSynthesizedNonUnique()) {
           Flags = Flags.withConformanceKind(ConformanceKind::WitnessTable);
           witnessTableVar = IGM.getAddrOfWitnessTable(Conformance);
         } else {
@@ -2907,10 +2959,10 @@ llvm::Constant *IRGenModule::emitProtocolConformances() {
   StringRef sectionName;
   switch (TargetInfo.OutputObjectFormat) {
   case llvm::Triple::MachO:
-    sectionName = "__TEXT, __swift4_proto, regular, no_dead_strip";
+    sectionName = "__TEXT, __swift5_proto, regular, no_dead_strip";
     break;
   case llvm::Triple::ELF:
-    sectionName = "swift4_protocol_conformances";
+    sectionName = "swift5_protocol_conformances";
     break;
   case llvm::Triple::COFF:
     sectionName = ".sw5prtc$B";
@@ -2921,8 +2973,10 @@ llvm::Constant *IRGenModule::emitProtocolConformances() {
   }
 
   var->setSection(sectionName);
-  addUsedGlobal(var);
+
+  disableAddressSanitizer(*this, var);
   
+  addUsedGlobal(var);
   return var;
 }
 
@@ -2932,10 +2986,10 @@ llvm::Constant *IRGenModule::emitTypeMetadataRecords() {
   std::string sectionName;
   switch (TargetInfo.OutputObjectFormat) {
   case llvm::Triple::MachO:
-    sectionName = "__TEXT, __swift4_types, regular, no_dead_strip";
+    sectionName = "__TEXT, __swift5_types, regular, no_dead_strip";
     break;
   case llvm::Triple::ELF:
-    sectionName = "swift4_type_metadata";
+    sectionName = "swift5_type_metadata";
     break;
   case llvm::Triple::COFF:
     sectionName = ".sw5tymd$B";
@@ -2988,8 +3042,10 @@ llvm::Constant *IRGenModule::emitTypeMetadataRecords() {
   var->setInitializer(initializer);
   var->setSection(sectionName);
   var->setAlignment(4);
-  addUsedGlobal(var);
+
+  disableAddressSanitizer(*this, var);
   
+  addUsedGlobal(var);
   return var;
 }
 
@@ -2997,13 +3053,13 @@ llvm::Constant *IRGenModule::emitFieldDescriptors() {
   std::string sectionName;
   switch (TargetInfo.OutputObjectFormat) {
   case llvm::Triple::MachO:
-    sectionName = "__TEXT, __swift4_fieldmd, regular, no_dead_strip";
+    sectionName = "__TEXT, __swift5_fieldmd, regular, no_dead_strip";
     break;
   case llvm::Triple::ELF:
-    sectionName = "swift4_fieldmd";
+    sectionName = "swift5_fieldmd";
     break;
   case llvm::Triple::COFF:
-    sectionName = ".swift4_fieldmd";
+    sectionName = ".swift5_fieldmd";
     break;
   default:
     llvm_unreachable("Don't know how to emit field records table for "
@@ -3035,6 +3091,9 @@ llvm::Constant *IRGenModule::emitFieldDescriptors() {
   var->setInitializer(llvm::ConstantArray::get(arrayTy, elts));
   var->setSection(sectionName);
   var->setAlignment(4);
+  
+  disableAddressSanitizer(*this, var);
+  
   addUsedGlobal(var);
   return var;
 }
@@ -4026,6 +4085,10 @@ IRGenModule::getAddrOfGlobalUTF16ConstantString(StringRef utf8) {
 /// - For classes, the superclass might change the size or number
 ///   of stored properties
 bool IRGenModule::isResilient(NominalTypeDecl *D, ResilienceExpansion expansion) {
+  if (expansion == ResilienceExpansion::Maximal &&
+      Types.isCompletelyFragile()) {
+    return false;
+  }
   return D->isResilient(getSwiftModule(), expansion);
 }
 

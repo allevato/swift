@@ -52,7 +52,7 @@ extension String {
   /// using the `String` type's `init(_:)` initializer.
   ///
   ///     let favemoji = "My favorite emoji is 🎉"
-  ///     if let i = favemoji.unicodeScalars.index(where: { $0.value >= 128 }) {
+  ///     if let i = favemoji.unicodeScalars.firstIndex(where: { $0.value >= 128 }) {
   ///         let asciiPrefix = String(favemoji.unicodeScalars[..<i])
   ///         print(asciiPrefix)
   ///     }
@@ -156,7 +156,7 @@ extension String {
     /// at the found index:
     ///
     ///     let greeting = "Hello, friend!"
-    ///     if let i = greeting.unicodeScalars.index(where: { "A"..."Z" ~= $0 }) {
+    ///     if let i = greeting.unicodeScalars.firstIndex(where: { "A"..."Z" ~= $0 }) {
     ///         print("First capital letter: \(greeting.unicodeScalars[i])")
     ///         print("Unicode scalar value: \(greeting.unicodeScalars[i].value)")
     ///     }
@@ -264,7 +264,6 @@ extension String {
       return String(_guts)
     }
 
-    @inlinable // FIXME(sil-serialize-all)
     public var debugDescription: String {
       return "StringUnicodeScalarView(\(self.description.debugDescription))"
     }
@@ -277,7 +276,7 @@ extension String {
   /// another string's `unicodeScalars` view.
   ///
   ///     let picnicGuest = "Deserving porcupine"
-  ///     if let i = picnicGuest.unicodeScalars.index(of: " ") {
+  ///     if let i = picnicGuest.unicodeScalars.firstIndex(of: " ") {
   ///         let adjective = String(picnicGuest.unicodeScalars[..<i])
   ///         print(adjective)
   ///     }
@@ -369,7 +368,6 @@ extension String.UnicodeScalarView : RangeReplaceableCollection {
   ///   to allocate.
   ///
   /// - Complexity: O(*n*), where *n* is the capacity being reserved.
-  @inlinable // FIXME(sil-serialize-all)
   public mutating func reserveCapacity(_ n: Int) {
     _guts.reserveCapacity(n)
   }
@@ -377,7 +375,6 @@ extension String.UnicodeScalarView : RangeReplaceableCollection {
   /// Appends the given Unicode scalar to the view.
   ///
   /// - Parameter c: The character to append to the string.
-  @inlinable // FIXME(sil-serialize-all)
   public mutating func append(_ c: Unicode.Scalar) {
     if _fastPath(_guts.isASCII && c.value <= 0x7f) {
       _guts.withMutableASCIIStorage(unusedCapacity: 1) { storage in
@@ -407,7 +404,6 @@ extension String.UnicodeScalarView : RangeReplaceableCollection {
   /// - Parameter newElements: A sequence of Unicode scalar values.
   ///
   /// - Complexity: O(*n*), where *n* is the length of the resulting view.
-  @inlinable // FIXME(sil-serialize-all)
   public mutating func append<S : Sequence>(contentsOf newElements: S)
   where S.Element == Unicode.Scalar {
     // FIXME: Keep ASCII storage if possible
@@ -451,7 +447,6 @@ extension String.UnicodeScalarView : RangeReplaceableCollection {
   ///   `newElements`. If the call to `replaceSubrange(_:with:)` simply
   ///   removes elements at the end of the string, the complexity is O(*n*),
   ///   where *n* is equal to `bounds.count`.
-  @inlinable // FIXME(sil-serialize-all)
   public mutating func replaceSubrange<C>(
     _ bounds: Range<Index>,
     with newElements: C
@@ -474,7 +469,7 @@ extension String.UnicodeScalarIndex {
   ///
   ///     let cafe = "Café 🍵"
   ///
-  ///     let utf16Index = cafe.utf16.index(of: 32)!
+  ///     let utf16Index = cafe.utf16.firstIndex(of: 32)!
   ///     let scalarIndex = String.Index(utf16Index, within: cafe.unicodeScalars)!
   ///
   ///     print(String(cafe.unicodeScalars[..<scalarIndex]))
@@ -507,7 +502,7 @@ extension String.UnicodeScalarIndex {
   /// in the string.
   ///
   ///     let cafe = "Café 🍵"
-  ///     let i = cafe.unicodeScalars.index(of: "🍵")
+  ///     let i = cafe.unicodeScalars.firstIndex(of: "🍵")
   ///     let j = i.samePosition(in: cafe)!
   ///     print(cafe[j...])
   ///     // Prints "🍵"
@@ -532,7 +527,7 @@ extension String.UnicodeScalarView {
     if i == startIndex || i == endIndex {
       return true
     }
-    if i._transcodedOffset != 0 { return false }
+    if i.transcodedOffset != 0 { return false }
     let i2 = _toCoreIndex(i)
     if _fastPath(!UTF16.isTrailSurrogate(_guts[i2])) { return true }
     return i2 == 0 || !UTF16.isLeadSurrogate(_guts[i2 &- 1])
@@ -625,14 +620,13 @@ extension String.UnicodeScalarView {
   /// to, but not including, the first comma (`","`) in the string.
   ///
   ///     let str = "All this happened, more or less."
-  ///     let i = str.unicodeScalars.index(of: ",")!
+  ///     let i = str.unicodeScalars.firstIndex(of: ",")!
   ///     let substring = str.unicodeScalars[str.unicodeScalars.startIndex ..< i]
   ///     print(String(substring))
   ///     // Prints "All this happened"
   ///
   /// - Complexity: O(*n*) if the underlying string is bridged from
   ///   Objective-C, where *n* is the length of the string; otherwise, O(1).
-  @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 4)
   public subscript(r: Range<Index>) -> String.UnicodeScalarView {
     let rawSubRange: Range<Int> =

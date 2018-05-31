@@ -17,13 +17,13 @@
 #ifndef SWIFT_SIL_SILFUNCTION_H
 #define SWIFT_SIL_SILFUNCTION_H
 
+#include "swift/AST/ASTNode.h"
 #include "swift/AST/ResilienceExpansion.h"
 #include "swift/Basic/ProfileCounter.h"
 #include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILDebugScope.h"
 #include "swift/SIL/SILLinkage.h"
 #include "swift/SIL/SILPrintContext.h"
-#include "swift/SIL/SILProfiler.h"
 #include "llvm/ADT/StringMap.h"
 
 /// The symbol name used for the program entry point function.
@@ -35,6 +35,7 @@ namespace swift {
 class ASTContext;
 class SILInstruction;
 class SILModule;
+class SILProfiler;
 
 enum IsBare_t { IsNotBare, IsBare };
 enum IsTransparent_t { IsNotTransparent, IsTransparent };
@@ -120,8 +121,8 @@ private:
   /// Only set if this function is a specialization of another function.
   const GenericSpecializationInformation *SpecializationInfo;
 
-  /// The forwarding substitutions, lazily computed.
-  Optional<SubstitutionList> ForwardingSubs;
+  /// The forwarding substitution map, lazily computed.
+  SubstitutionMap ForwardingSubMap;
 
   /// The collection of all BasicBlocks in the SILFunction. Empty for external
   /// function references.
@@ -266,10 +267,7 @@ public:
     Profiler = InheritedProfiler;
   }
 
-  void createProfiler(ASTNode Root, ForDefinition_t forDefinition) {
-    assert(!Profiler && "Function already has a profiler");
-    Profiler = SILProfiler::create(Module, forDefinition, Root);
-  }
+  void createProfiler(ASTNode Root, ForDefinition_t forDefinition);
 
   void discardProfiler() { Profiler = nullptr; }
 
@@ -685,7 +683,7 @@ public:
 
   /// Return the identity substitutions necessary to forward this call if it is
   /// generic.
-  SubstitutionList getForwardingSubstitutions();
+  SubstitutionMap getForwardingSubstitutionMap();
 
   //===--------------------------------------------------------------------===//
   // Block List Access

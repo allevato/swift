@@ -22,6 +22,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace swift {
+class DiagnosticEngine;
+
 namespace ide {
 namespace api {
 
@@ -129,9 +131,32 @@ public:
     }
   }
 
+  bool isStringRepresentableChange() const {
+    switch(DiffKind) {
+    case NodeAnnotation::DictionaryKeyUpdate:
+    case NodeAnnotation::OptionalDictionaryKeyUpdate:
+    case NodeAnnotation::ArrayMemberUpdate:
+    case NodeAnnotation::OptionalArrayMemberUpdate:
+    case NodeAnnotation::SimpleStringRepresentableUpdate:
+    case NodeAnnotation::SimpleOptionalStringRepresentableUpdate:
+      return true;
+    default:
+      return false;
+    }
+  }
+
   StringRef getNewName() const { assert(isRename()); return RightComment; }
   APIDiffItemKind getKind() const override {
     return APIDiffItemKind::ADK_CommonDiffItem;
+  }
+
+  bool rightCommentUnderscored() const {
+    DeclNameViewer Viewer(RightComment);
+    auto HasUnderScore =
+      [](StringRef S) { return S.find('_') != StringRef::npos; };
+    auto Args = Viewer.args();
+    return HasUnderScore(Viewer.base()) ||
+        std::any_of(Args.begin(), Args.end(), HasUnderScore);
   }
 };
 
@@ -224,6 +249,7 @@ enum class TypeMemberDiffItemSubKind {
   HoistSelfOnly,
   HoistSelfAndRemoveParam,
   HoistSelfAndUseProperty,
+  FuncRename,
 };
 
 struct TypeMemberDiffItem: public APIDiffItem {
@@ -320,6 +346,21 @@ struct OverloadedFuncInfo: public APIDiffItem {
   }
 };
 
+struct NameCorrectionInfo {
+  StringRef OriginalName;
+  StringRef CorrectedName;
+  StringRef ModuleName;
+  NameCorrectionInfo(StringRef OriginalName, StringRef CorrectedName,
+    StringRef ModuleName): OriginalName(OriginalName),
+    CorrectedName(CorrectedName), ModuleName(ModuleName) {}
+  bool operator<(NameCorrectionInfo Other) const {
+    if (ModuleName != Other.ModuleName)
+      return ModuleName.compare(Other.ModuleName) < 0;
+    else
+      return OriginalName.compare(Other.OriginalName) < 0;
+  }
+};
+
 /// APIDiffItem store is the interface that migrator should communicates with;
 /// Given a key, usually the usr of the system entity under migration, the store
 /// should return a slice of related changes in the same format of
@@ -329,8 +370,9 @@ struct APIDiffItemStore {
   struct Implementation;
   Implementation &Impl;
   static void serialize(llvm::raw_ostream &os, ArrayRef<APIDiffItem*> Items);
+  static void serialize(llvm::raw_ostream &os, ArrayRef<NameCorrectionInfo> Items);
   APIDiffItemStore(const APIDiffItemStore& that) = delete;
-  APIDiffItemStore();
+  APIDiffItemStore(DiagnosticEngine &Diags);
   ~APIDiffItemStore();
   ArrayRef<APIDiffItem*> getDiffItems(StringRef Key) const;
   ArrayRef<APIDiffItem*> getAllDiffItems() const;

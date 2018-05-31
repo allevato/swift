@@ -311,13 +311,14 @@ extension Unicode.Scalar : LosslessStringConvertible {
 }
 
 extension Unicode.Scalar : Hashable {
-  /// The Unicode scalar's hash value.
+  /// Hashes the essential components of this value by feeding them into the
+  /// given hasher.
   ///
-  /// Hash values are not guaranteed to be equal across different executions of
-  /// your program. Do not save hash values to use during a future execution.
+  /// - Parameter hasher: The hasher to use when combining the components
+  ///   of this instance.
   @inlinable // FIXME(sil-serialize-all)
-  public var hashValue: Int {
-    return Int(self.value)
+  public func hash(into hasher: inout Hasher) {
+    hasher.combine(self.value)
   }
 }
 
