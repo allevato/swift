@@ -614,7 +614,8 @@ public:
   ///
   /// Returns any error that occurred during association, including validation
   /// that the module file is compatible with the module it's being loaded as.
-  Status associateWithFileContext(FileUnit *file, SourceLoc diagLoc);
+  Status associateWithFileContext(FileUnit *file, SourceLoc diagLoc,
+                                  bool appliesDebuggingOptions);
 
   /// Checks whether this module can be used.
   Status getStatus() const {

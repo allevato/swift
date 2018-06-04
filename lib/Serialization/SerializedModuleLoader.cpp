@@ -35,8 +35,10 @@ using AccessPathElem = std::pair<Identifier, SourceLoc>;
 
 // Defined out-of-line so that we can see ~ModuleFile.
 SerializedModuleLoader::SerializedModuleLoader(ASTContext &ctx,
-                                               DependencyTracker *tracker)
-  : ModuleLoader(tracker), Ctx(ctx) {}
+                                               DependencyTracker *tracker,
+                                               bool appliesDebuggingOptions)
+  : ModuleLoader(tracker), Ctx(ctx),
+    AppliesDebuggingOptions(appliesDebuggingOptions) {}
 SerializedModuleLoader::~SerializedModuleLoader() = default;
 
 static std::error_code
@@ -266,7 +268,8 @@ FileUnit *SerializedModuleLoader::loadAST(
 
     auto diagLocOrInvalid = diagLoc.getValueOr(SourceLoc());
     loadInfo.status =
-        loadedModuleFile->associateWithFileContext(fileUnit, diagLocOrInvalid);
+        loadedModuleFile->associateWithFileContext(fileUnit, diagLocOrInvalid,
+                                                   AppliesDebuggingOptions);
     if (loadInfo.status == serialization::Status::Valid) {
       Ctx.bumpGeneration();
       LoadedModuleFiles.emplace_back(std::move(loadedModuleFile),

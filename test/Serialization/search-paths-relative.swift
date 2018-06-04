@@ -5,16 +5,19 @@
 // RUN: %target-swift-frontend -emit-module -o %t/Frameworks/has_alias.framework/Modules/has_alias.swiftmodule/%target-swiftmodule-name %S/Inputs/alias.swift -module-name has_alias
 
 // RUN: cd %t/secret && %target-swiftc_driver -emit-module -o %t/has_xref.swiftmodule -I . -F ../Frameworks -parse-as-library %S/Inputs/has_xref.swift %S/../Inputs/empty.swift -Xfrontend -serialize-debugging-options -Xcc -ivfsoverlay -Xcc %S/../Inputs/unextended-module-overlay.yaml -Xcc -DDUMMY
-// RUN: %target-swift-frontend %s -typecheck -I %t
+// RUN: %target-swift-frontend %s -typecheck -I %t -verify -show-diagnostics-after-fatal
+
+// RUN: cd %t/secret && %target-swiftc_driver -emit-module -o %t/has_xref.swiftmodule -I . -F ../Frameworks -parse-as-library %S/Inputs/has_xref.swift %S/../Inputs/empty.swift -Xfrontend -serialize-debugging-options -Xcc -ivfsoverlay -Xcc %S/../Inputs/unextended-module-overlay.yaml -Xcc -DDUMMY
+// RUN: %target-swift-frontend %s -typecheck -I %t -I %t/secret -F %t/Frameworks
 
 // Check the actual serialized search paths.
 // RUN: llvm-bcanalyzer -dump %t/has_xref.swiftmodule > %t/has_xref.swiftmodule.txt
 // RUN: %FileCheck %s < %t/has_xref.swiftmodule.txt
 // RUN: %FileCheck -check-prefix=NEGATIVE %s < %t/has_xref.swiftmodule.txt
 
-import has_xref
+import has_xref // expected-error {{missing required modules: 'has_alias', 'struct_with_operators'}}
 
-numeric(42)
+numeric(42) // expected-error {{use of unresolved identifier 'numeric'}}
 
 // CHECK-LABEL: <OPTIONS_BLOCK
 // CHECK: <XCC abbrevid={{[0-9]+}}/> blob data = '-working-directory'

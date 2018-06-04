@@ -28,18 +28,21 @@ private:
   /// A { module, generation # } pair.
   using LoadedModulePair = std::pair<std::unique_ptr<ModuleFile>, unsigned>;
   std::vector<LoadedModulePair> LoadedModuleFiles;
+  bool AppliesDebuggingOptions;
 
   SmallVector<std::unique_ptr<llvm::MemoryBuffer>, 2> OrphanedMemoryBuffers;
 
-  explicit SerializedModuleLoader(ASTContext &ctx, DependencyTracker *tracker);
+  explicit SerializedModuleLoader(ASTContext &ctx, DependencyTracker *tracker,
+                                  bool appliesDebuggingOptions);
 
 public:
   /// \brief Create a new importer that can load serialized Swift modules
   /// into the given ASTContext.
   static std::unique_ptr<SerializedModuleLoader>
-  create(ASTContext &ctx, DependencyTracker *tracker = nullptr) {
+  create(ASTContext &ctx, DependencyTracker *tracker = nullptr,
+         bool appliesDebuggingOptions = false) {
     return std::unique_ptr<SerializedModuleLoader>{
-      new SerializedModuleLoader(ctx, tracker)
+      new SerializedModuleLoader(ctx, tracker, appliesDebuggingOptions)
     };
   }
 

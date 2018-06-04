@@ -1342,7 +1342,8 @@ ModuleFile::ModuleFile(
 }
 
 Status ModuleFile::associateWithFileContext(FileUnit *file,
-                                            SourceLoc diagLoc) {
+                                            SourceLoc diagLoc,
+                                            bool appliesDebuggingOptions) {
   PrettyStackTraceModuleFile stackEntry(*this);
 
   assert(getStatus() == Status::Valid && "invalid module file");
@@ -1364,9 +1365,10 @@ Status ModuleFile::associateWithFileContext(FileUnit *file,
     return error(Status::TargetTooNew);
   }
 
-  for (const auto &searchPath : SearchPaths)
-    ctx.addSearchPath(searchPath.Path, searchPath.IsFramework,
-                      searchPath.IsSystem);
+  if (appliesDebuggingOptions)
+    for (const auto &searchPath : SearchPaths)
+      ctx.addSearchPath(searchPath.Path, searchPath.IsFramework,
+                        searchPath.IsSystem);
 
   auto clangImporter = static_cast<ClangImporter *>(ctx.getClangModuleLoader());
 
