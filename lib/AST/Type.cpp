@@ -409,16 +409,18 @@ Type TypeBase::addCurriedSelfType(const DeclContext *dc) {
   GenericSignature *sig = dc->getGenericSignatureOfContext();
   if (auto *genericFn = type->getAs<GenericFunctionType>()) {
     sig = genericFn->getGenericSignature();
-    type = FunctionType::get(genericFn->getInput(),
+    type = FunctionType::get(genericFn->getParams(),
                              genericFn->getResult(),
                              genericFn->getExtInfo());
   }
 
   auto selfTy = dc->getDeclaredInterfaceType();
+  auto selfParam = AnyFunctionType::Param(selfTy,
+                                          Identifier(), ParameterTypeFlags());
   if (sig)
-    return GenericFunctionType::get(sig, selfTy, type,
+    return GenericFunctionType::get(sig, {selfParam}, type,
                                     AnyFunctionType::ExtInfo());
-  return FunctionType::get(selfTy, type);
+  return FunctionType::get({selfParam}, type, AnyFunctionType::ExtInfo());
 }
 
 void
@@ -798,46 +800,54 @@ swift::decomposeArgType(Type type, ArrayRef<Identifier> argumentLabels) {
   return result;
 }
 
-void swift::computeDefaultMap(ArrayRef<AnyFunctionType::Param> params,
-                              const ValueDecl *paramOwner, unsigned level,
-                              SmallVectorImpl<bool> &outDefaultMap) {
+llvm::SmallBitVector
+swift::computeDefaultMap(ArrayRef<AnyFunctionType::Param> params,
+                         const ValueDecl *paramOwner, unsigned level) {
+  llvm::SmallBitVector resultVector(params.size());
+  // No parameter owner means no parameter list means no default arguments
+  // - hand back the zeroed bitvector.
+  //
+  // FIXME: We ought to not request default argument info in this case.
+  if (!paramOwner)
+    return resultVector;
+
   // Find the corresponding parameter list.
   const ParameterList *paramList = nullptr;
-  if (paramOwner) {
-    if (auto *func = dyn_cast<AbstractFunctionDecl>(paramOwner)) {
-      if (level < func->getNumParameterLists())
-        paramList = func->getParameterList(level);
-    } else if (auto *subscript = dyn_cast<SubscriptDecl>(paramOwner)) {
-      if (level == 1)
-        paramList = subscript->getIndices();
-    } else if (auto *enumElement = dyn_cast<EnumElementDecl>(paramOwner)) {
-      if (level == 1)
-        paramList = enumElement->getParameterList();
-    }
+  if (auto *func = dyn_cast<AbstractFunctionDecl>(paramOwner)) {
+    if (level < func->getNumParameterLists())
+      paramList = func->getParameterList(level);
+  } else if (auto *subscript = dyn_cast<SubscriptDecl>(paramOwner)) {
+    if (level == 1)
+      paramList = subscript->getIndices();
+  } else if (auto *enumElement = dyn_cast<EnumElementDecl>(paramOwner)) {
+    if (level == 1)
+      paramList = enumElement->getParameterList();
   }
+
+  // No parameter list means no default arguments - hand back the zeroed
+  // bitvector.
+  if (!paramList)
+    return resultVector;
 
   switch (params.size()) {
   case 0:
-    break;
-
-  case 1:
-    outDefaultMap.push_back(paramList && paramList->size() == 1 &&
-                            paramList->get(0)->isDefaultArgument());
-    break;
+    return resultVector;
 
   default:
     // Arguments and parameters are not guaranteed to always line-up
     // perfectly, e.g. failure diagnostics tries to match argument type
     // to different "candidate" parameters.
-    if (paramList && params.size() != paramList->size())
-      paramList = nullptr;
+    if (params.size() != paramList->size())
+      return resultVector;
 
     for (auto i : range(0, params.size())) {
-      outDefaultMap.push_back(paramList &&
-                              paramList->get(i)->isDefaultArgument());
+      if (paramList->get(i)->isDefaultArgument()) {
+        resultVector.set(i);
+      }
     }
     break;
   }
+  return resultVector;
 }
 
 /// Turn a param list into a symbolic and printable representation that does not
@@ -1583,9 +1593,11 @@ bool TypeBase::isBindableTo(Type b) {
         if (func->getExtInfo() != substFunc->getExtInfo())
           return false;
         
-        if (!visit(func->getInput()->getCanonicalType(),
-                   substFunc->getInput()->getCanonicalType()))
-          return false;
+        for (unsigned i : indices(func->getParams())) {
+          if (!visit(func->getParams()[i].getType(),
+                     substFunc.getParams()[i].getType()))
+            return false;
+        }
         
         return visit(func->getResult()->getCanonicalType(),
                      substFunc->getResult()->getCanonicalType());
@@ -1827,7 +1839,7 @@ getObjCObjectRepresentable(Type type, const DeclContext *dc) {
   if (auto classDecl = type->getClassOrBoundGenericClass()) {
     auto &ctx = classDecl->getASTContext();
     if (auto resolver = ctx.getLazyResolver())
-      resolver->resolveDeclSignature(classDecl);
+      resolver->resolveIsObjC(classDecl);
 
     if (classDecl->isObjC())
       return ForeignRepresentableKind::Object;
@@ -1943,30 +1955,41 @@ getForeignRepresentable(Type type, ForeignLanguage language,
       break;
     }
 
+    auto success = [](bool anyStaticBridged,
+                      bool anyBridged,
+                      bool isBlock) -> std::pair<ForeignRepresentableKind,
+                                                 ProtocolConformance *> {
+      // We have something representable; check how it is representable.
+      return { anyStaticBridged ? ForeignRepresentableKind::StaticBridged
+                   : anyBridged ? ForeignRepresentableKind::Bridged
+                   : isBlock    ? ForeignRepresentableKind::Object
+                   : ForeignRepresentableKind::Trivial,
+                   nullptr };
+    };
+
+    // HACK: In Swift 3 mode, we accepted (Void) -> Void for () -> Void
+    if (dc->getASTContext().isSwiftVersion3()
+        && functionType->getParams().size() == 1
+        && functionType->getParams()[0].getLabel().empty()
+        && functionType->getParams()[0].getType()->isVoid()
+        && functionType->getResult()->isVoid()) {
+      return success(anyStaticBridged, anyBridged, isBlock);
+    }
+
     // Look at the result type.
     Type resultType = functionType->getResult();
     if (!resultType->isVoid() && recurse(resultType))
       return failure();
 
-    // Look at the input types.
-    Type inputType = functionType->getInput();
-    if (auto inputTuple = inputType->getAs<TupleType>()) {
-      for (const auto &elt : inputTuple->getElements()) {
-        if (elt.isVararg())
-          return failure();
-        if (recurse(elt.getType()))
-          return failure();
-      }
-    } else if (recurse(inputType)) {
-      return failure();
+    // Look at the input params.
+    for (const auto &param : functionType->getParams()) {
+      if (param.isVariadic())
+        return failure();
+      if (recurse(param.getType()))
+        return failure();
     }
 
-    // We have something representable; check how it is representable.
-    return { anyStaticBridged ? ForeignRepresentableKind::StaticBridged
-                 : anyBridged ? ForeignRepresentableKind::Bridged
-                 : isBlock    ? ForeignRepresentableKind::Object
-                 : ForeignRepresentableKind::Trivial,
-             nullptr };
+    return success(anyStaticBridged, anyBridged, isBlock);
   }
 
   // Give special dispensation to builtin types for testing purposes.
@@ -2315,10 +2338,23 @@ static bool matches(CanType t1, CanType t2, TypeMatchOptions matchMode,
       return false;
 
     auto paramsAndResultMatch = [&]() {
-      // Inputs are contravariant, results are covariant.
-      return (matches(fn2.getInput(), fn1.getInput(), matchMode,
-                      ParameterPosition::Parameter, OptionalUnwrapping::None) &&
-              matches(fn1.getResult(), fn2.getResult(), matchMode,
+      auto fn2Params = fn2.getParams();
+      auto fn1Params = fn1.getParams();
+      if (fn2Params.size() != fn1Params.size()) {
+        return false;
+      }
+
+      // Inputs are contravariant.
+      for (auto i : indices(fn2.getParams())) {
+        if (!matches(fn2Params[i].getType(), fn1Params[i].getType(),
+                     matchMode, ParameterPosition::ParameterTupleElement,
+                     OptionalUnwrapping::None)) {
+          return false;
+        }
+      }
+
+      // Results are covariant.
+      return (matches(fn1.getResult(), fn2.getResult(), matchMode,
                       ParameterPosition::NotParameter,
                       OptionalUnwrapping::None));
     };
@@ -2763,9 +2799,9 @@ bool AnyFunctionType::isCanonicalFunctionInputType(Type input) {
 
 FunctionType *
 GenericFunctionType::substGenericArgs(SubstitutionMap subs) {
-  Type input = getInput().subst(subs);
-  Type result = getResult().subst(subs);
-  return FunctionType::get(input, result, getExtInfo());
+  auto substFn = Type(this).subst(subs)->castTo<AnyFunctionType>();
+  return FunctionType::get(substFn->getParams(),
+                           substFn->getResult(), getExtInfo());
 }
 
 static Type getMemberForBaseType(LookupConformanceFn lookupConformances,
@@ -2923,7 +2959,7 @@ static Type substGenericFunctionType(GenericFunctionType *genericFnType,
                                      LookupConformanceFn lookupConformances,
                                      SubstOptions options) {
   // Substitute into the function type (without generic signature).
-  auto *bareFnType = FunctionType::get(genericFnType->getInput(),
+  auto *bareFnType = FunctionType::get(genericFnType->getParams(),
                                        genericFnType->getResult(),
                                        genericFnType->getExtInfo());
   Type result =
@@ -3005,7 +3041,7 @@ static Type substGenericFunctionType(GenericFunctionType *genericFnType,
   }
 
   // Produce the new generic function type.
-  return GenericFunctionType::get(genericSig, fnType->getInput(),
+  return GenericFunctionType::get(genericSig, fnType->getParams(),
                                   fnType->getResult(), fnType->getExtInfo());
 }
 
@@ -3363,7 +3399,7 @@ Type TypeBase::adjustSuperclassMemberDeclType(const ValueDecl *baseDecl,
       baseDecl, derivedDecl, /*derivedSubs=*/None);
 
   if (auto *genericMemberType = memberType->getAs<GenericFunctionType>()) {
-    memberType = FunctionType::get(genericMemberType->getInput(),
+    memberType = FunctionType::get(genericMemberType->getParams(),
                                    genericMemberType->getResult(),
                                    genericMemberType->getExtInfo());
   }

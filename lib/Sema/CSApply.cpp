@@ -2988,6 +2988,14 @@ namespace {
       DeclName name(tc.Context, DeclBaseName::createConstructor(),
                     { tc.Context.Id_arrayLiteral });
 
+      // Coerce the array elements to be rvalues, so that other type-checker
+      // code that attempts to peephole the AST doesn't have to re-load the
+      // elements (and break the invariant that lvalue nodes only get their
+      // access kind set once).
+      for (auto &element : expr->getElements()) {
+        element = cs.coerceToRValue(element);
+      }
+
       // Restructure the argument to provide the appropriate labels in the
       // tuple.
       SmallVector<TupleTypeElt, 4> typeElements;
@@ -3655,10 +3663,7 @@ namespace {
       auto *locator = cs.getConstraintLocator(expr);
 
       if (!choice) {
-        if (tc.Context.LangOpts.EnableObjCInterop)
-          choice = solution.getDisjunctionChoice(locator);
-        else
-          choice = 0;
+        choice = solution.getDisjunctionChoice(locator);
       }
 
       // Handle the coercion/bridging of the underlying subexpression, where
@@ -5767,8 +5772,8 @@ Expr *ExprRewriter::coerceCallArguments(
   unsigned level = apply ? computeCallLevel(cs, callee, apply) : 0;
 
   // Determine the parameter bindings.
-  SmallVector<bool, 4> defaultMap;
-  computeDefaultMap(params, callee.getDecl(), level, defaultMap);
+  llvm::SmallBitVector defaultMap
+    = computeDefaultMap(params, callee.getDecl(), level);
   auto args = decomposeArgType(cs.getType(arg), argLabels);
 
   // Quickly test if any further fix-ups for the argument types are necessary.
@@ -5782,7 +5787,7 @@ Expr *ExprRewriter::coerceCallArguments(
     
       for (size_t i = 0; i < params.size(); i++) {
         if (auto dotExpr = dyn_cast<DotSyntaxCallExpr>(argElts[i])) {
-          auto paramTy = params[i].getType()->getWithoutSpecifierType();
+          auto paramTy = params[i].getType();
           auto argTy = cs.getType(dotExpr)->getWithoutSpecifierType();
           if (!paramTy->isEqual(argTy)) {
             allParamsMatch = false;
@@ -6067,6 +6072,12 @@ static bool applyTypeToClosureExpr(ConstraintSystem &cs,
   // If we found an explicit ClosureExpr, update its type.
   if (auto CE = dyn_cast<ClosureExpr>(expr)) {
     cs.setType(CE, toType);
+
+    // If this is not a single-expression closure, write the type into the
+    // ClosureExpr directly here, since the visitor won't.
+    if (!CE->hasSingleExpressionBody())
+      CE->setType(toType);
+
     return true;
   }
 
@@ -7364,7 +7375,7 @@ Expr *ExprRewriter::finishApply(ApplyExpr *apply, Type openedType,
       }
       
       case DeclTypeCheckingSemantics::WithoutActuallyEscaping: {
-        // Resolve into a MakeTemporarilyEscapingExpr.
+        // Resolve into a MakeTemporarilyEscapableExpr.
         auto arg = cast<TupleExpr>(apply->getArg());
         assert(arg->getNumElements() == 2 && "should have two arguments");
         auto nonescaping = arg->getElements()[0];

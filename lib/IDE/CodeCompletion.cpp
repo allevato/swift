@@ -1232,6 +1232,7 @@ void CodeCompletionString::getName(raw_ostream &OS) const {
       case ChunkKind::TypeAnnotation:
       case ChunkKind::CallParameterClosureType:
       case ChunkKind::DeclAttrParamColon:
+      case ChunkKind::OptionalMethodCallTail:
         continue;
       case ChunkKind::ThrowsKeyword:
       case ChunkKind::RethrowsKeyword:
@@ -1543,21 +1544,15 @@ protocolForLiteralKind(CodeCompletionLiteralKind kind) {
 /// that is of type () -> ().
 static bool hasTrivialTrailingClosure(const FuncDecl *FD,
                                       AnyFunctionType *funcType) {
-  SmallVector<bool, 4> defaultMap;
-  computeDefaultMap(funcType->getParams(), FD,
-                    /*level*/ FD->isInstanceMember() ? 1 : 0, defaultMap);
+  llvm::SmallBitVector defaultMap =
+    computeDefaultMap(funcType->getParams(), FD,
+                      /*level*/ FD->isInstanceMember() ? 1 : 0);
   
-  bool OneArg = defaultMap.size() == 1;
-  if (defaultMap.size() > 1) {
-    auto NonDefault = std::count(defaultMap.begin(), defaultMap.end() - 1, false);
-    OneArg = (NonDefault == 0);
-  }
-
-  if (OneArg) {
+  if (defaultMap.size() - defaultMap.count() == 1) {
     auto param = funcType->getParams().back();
     if (!param.isAutoClosure()) {
       if (auto Fn = param.getType()->getAs<AnyFunctionType>()) {
-        return Fn->getInput()->isVoid() && Fn->getResult()->isVoid();
+        return Fn->getParams().empty() && Fn->getResult()->isVoid();
       }
     }
   }
@@ -2109,10 +2104,10 @@ public:
     setClangDeclKeywords(VD, Pairs, Builder);
     // Add a type annotation.
     Type VarType = getTypeOfMember(VD);
-    if (VD->getName() == Ctx.Id_self) {
-      // Strip inout from 'self'.  It is useful to show inout for function
-      // parameters.  But for 'self' it is just noise.
-      VarType = VarType->getInOutObjectType();
+    if (VD->getName() != Ctx.Id_self && VD->isInOut()) {
+      // It is useful to show inout for function parameters.
+      // But for 'self' it is just noise.
+      VarType = InOutType::get(VarType);
     }
     auto DynamicOrOptional =
         IsDynamicLookup || VD->getAttrs().hasAttribute<OptionalAttr>();
@@ -2591,7 +2586,7 @@ public:
 
   void addConstructorCall(const ConstructorDecl *CD, DeclVisibilityKind Reason,
                           Optional<Type> BaseType, Optional<Type> Result,
-                          bool IsOnMetatype = true,
+                          bool IsOnType = true,
                           Identifier addName = Identifier()) {
     foundFunction(CD);
     Type MemberType = getTypeOfMember(CD, BaseType);
@@ -2601,14 +2596,10 @@ public:
                                       ->castTo<AnyFunctionType>();
 
     bool needInit = false;
-    if (!IsOnMetatype) {
+    if (!IsOnType) {
       assert(addName.empty());
-      assert(isa<ConstructorDecl>(CurrDeclContext) &&
-             "can call super.init only inside a constructor");
       needInit = true;
-    } else if (addName.empty() && HaveDot &&
-               Reason == DeclVisibilityKind::MemberOfCurrentNominal) {
-      // This case is querying the init function as member
+    } else if (addName.empty() && HaveDot) {
       needInit = true;
     }
 
@@ -2638,7 +2629,6 @@ public:
         addTypeAnnotation(Builder, MemberType);
         return;
       }
-      assert(ConstructorType);
 
       if (!HaveLParen)
         Builder.addLeftParen();
@@ -2692,7 +2682,7 @@ public:
         if (shouldHideDeclFromCompletionResults(init))
           continue;
         addConstructorCall(cast<ConstructorDecl>(init), Reason, type, None,
-                           /*IsOnMetatype=*/true, name);
+                           /*IsOnType=*/true, name);
       }
     }
   }
@@ -2943,43 +2933,40 @@ public:
           return;
         }
 
-        if (auto MT = ExprType->getRValueType()->getAs<AnyMetatypeType>()) {
-          if (HaveDot) {
-            Type Ty;
-            for (Ty = MT; Ty && Ty->is<AnyMetatypeType>();
-                 Ty = Ty->getAs<AnyMetatypeType>()->getInstanceType());
-            assert(Ty && "Cannot find instance type.");
-
-            // Add init() as member of the metatype.
-            if (Reason == DeclVisibilityKind::MemberOfCurrentNominal) {
-              if (IsStaticMetatype || CD->isRequired() ||
-                  !Ty->is<ClassType>())
-                addConstructorCall(CD, Reason, None, None);
-            }
-            return;
-          }
-        }
-
         if (auto MT = ExprType->getAs<AnyMetatypeType>()) {
-          if (HaveDot)
-            return;
+          Type Ty = MT->getInstanceType();
+          assert(Ty && "Cannot find instance type.");
 
-          // If instance type is type alias, showing users that the constructed
+          // If instance type is type alias, show users that the constructed
           // type is the typealias instead of the underlying type of the alias.
           Optional<Type> Result = None;
-          if (auto AT = MT->getInstanceType()) {
-            if (!CD->getInterfaceType()->is<ErrorType>() &&
-                (isa<NameAliasType>(AT.getPointer()) &&
-                 AT->getDesugaredType() ==
-                   CD->getResultInterfaceType().getPointer()))
-              Result = AT;
+          if (!CD->getInterfaceType()->is<ErrorType>() &&
+              isa<NameAliasType>(Ty.getPointer()) &&
+              Ty->getDesugaredType() ==
+                CD->getResultInterfaceType().getPointer()) {
+            Result = Ty;
           }
-          addConstructorCall(CD, Reason, None, Result);
+          // If the expression type is not a static metatype or an archetype, the base
+          // is not a type. Direct call syntax is illegal on values, so we only add
+          // initializer completions if we do not have a left parenthesis and either
+          // the initializer is required, the base type's instance type is not a class,
+          // or this is a 'self' or 'super' reference.
+          if (IsStaticMetatype || Ty->is<ArchetypeType>())
+            addConstructorCall(CD, Reason, None, Result, /*isOnType*/true);
+          else if ((IsSelfRefExpr || IsSuperRefExpr || !Ty->is<ClassType>() ||
+                    CD->isRequired()) && !HaveLParen)
+            addConstructorCall(CD, Reason, None, Result, /*isOnType*/false);
+          return;
         }
-        if (IsSuperRefExpr || IsSelfRefExpr) {
-          if (!isa<ConstructorDecl>(CurrDeclContext))
+        if (!HaveLParen) {
+          auto CDC = dyn_cast<ConstructorDecl>(CurrDeclContext);
+          if (!CDC)
             return;
-          addConstructorCall(CD, Reason, None, None, /*IsOnMetatype=*/false);
+          // We do not want 'init' completions for 'self' in non-convenience
+          // initializers and for 'super' in convenience initializers.
+          if ((IsSelfRefExpr && CDC->isConvenienceInit()) ||
+              ((IsSuperRefExpr && !CDC->isConvenienceInit())))
+            addConstructorCall(CD, Reason, None, None, /*IsOnType=*/false);
         }
         return;
       }
@@ -4150,7 +4137,6 @@ public:
                              CurrDeclContext, TypeResolver.get(),
                              IncludeInstanceMembers);
     addKeyword("Type", MetaBase);
-    addKeyword("self", BaseType, SemanticContextKind::CurrentNominal);
   }
 
   static bool canUseAttributeOnDecl(DeclAttrKind DAK, bool IsInSil,
@@ -4854,11 +4840,16 @@ static bool isClangSubModule(ModuleDecl *TheModule) {
 }
 
 static void addDeclKeywords(CodeCompletionResultSink &Sink) {
-  auto AddKeyword = [&](StringRef Name, CodeCompletionKeywordKind Kind) {
+  auto AddKeyword = [&](StringRef Name, CodeCompletionKeywordKind Kind,
+                        Optional<DeclAttrKind> DAK) {
     if (Name == "let" || Name == "var") {
       // Treat keywords that could be the start of a pattern specially.
       return;
     }
+
+    // Remove user inaccessible keywords.
+    if (DAK.hasValue() && DeclAttribute::isUserInaccessible(*DAK)) return;
+
     CodeCompletionResultBuilder Builder(
         Sink, CodeCompletionResult::ResultKind::Keyword,
         SemanticContextKind::None, {});
@@ -4866,18 +4857,18 @@ static void addDeclKeywords(CodeCompletionResultSink &Sink) {
     Builder.addTextChunk(Name);
   };
 
-#define DECL_KEYWORD(kw) AddKeyword(#kw, CodeCompletionKeywordKind::kw_##kw);
+#define DECL_KEYWORD(kw) AddKeyword(#kw, CodeCompletionKeywordKind::kw_##kw, None);
 #include "swift/Syntax/TokenKinds.def"
 
   // Context-sensitive keywords.
-  auto AddCSKeyword = [&](StringRef Name) {
-    AddKeyword(Name, CodeCompletionKeywordKind::None);
+  auto AddCSKeyword = [&](StringRef Name, DeclAttrKind Kind) {
+    AddKeyword(Name, CodeCompletionKeywordKind::None, Kind);
   };
 
-#define CONTEXTUAL_CASE(KW) AddCSKeyword(#KW);
-#define CONTEXTUAL_DECL_ATTR(KW, ...) CONTEXTUAL_CASE(KW)
-#define CONTEXTUAL_DECL_ATTR_ALIAS(KW, ...) CONTEXTUAL_CASE(KW)
-#define CONTEXTUAL_SIMPLE_DECL_ATTR(KW, ...) CONTEXTUAL_CASE(KW)
+#define CONTEXTUAL_CASE(KW, CLASS) AddCSKeyword(#KW, DAK_##CLASS);
+#define CONTEXTUAL_DECL_ATTR(KW, CLASS, ...) CONTEXTUAL_CASE(KW, CLASS)
+#define CONTEXTUAL_DECL_ATTR_ALIAS(KW, CLASS) CONTEXTUAL_CASE(KW, CLASS)
+#define CONTEXTUAL_SIMPLE_DECL_ATTR(KW, CLASS, ...) CONTEXTUAL_CASE(KW, CLASS)
 #include <swift/AST/Attr.def>
 #undef CONTEXTUAL_CASE
 
@@ -4896,9 +4887,6 @@ static void addStmtKeywords(CodeCompletionResultSink &Sink, bool MaybeFuncBody) 
   };
 #define STMT_KEYWORD(kw) AddKeyword(#kw, CodeCompletionKeywordKind::kw_##kw);
 #include "swift/Syntax/TokenKinds.def"
-
-  // Throw is not marked as a STMT_KEYWORD.
-  AddKeyword("throw", CodeCompletionKeywordKind::kw_throw);
 }
 
 static void addLetVarKeywords(CodeCompletionResultSink &Sink) {

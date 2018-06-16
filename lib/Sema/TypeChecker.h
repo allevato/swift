@@ -151,30 +151,37 @@ public:
   filter(llvm::function_ref<bool(LookupResultEntry, /*isOuter*/ bool)> pred);
 };
 
+/// An individual result of a name lookup for a type.
+struct LookupTypeResultEntry {
+  TypeDecl *Member;
+  Type MemberType;
+  /// The associated type that the Member/MemberType were inferred for, but only
+  /// if inference happened when creating this entry.
+  AssociatedTypeDecl *InferredAssociatedType;
+};
+
 /// The result of name lookup for types.
 class LookupTypeResult {
   /// The set of results found.
-  SmallVector<std::pair<TypeDecl *, Type>, 4> Results;
+  SmallVector<LookupTypeResultEntry, 4> Results;
 
   friend class TypeChecker;
 
 public:
-  using iterator = SmallVectorImpl<std::pair<TypeDecl *, Type>>::iterator;
+  using iterator = SmallVectorImpl<LookupTypeResultEntry>::iterator;
   iterator begin() { return Results.begin(); }
   iterator end() { return Results.end(); }
   unsigned size() const { return Results.size(); }
 
-  std::pair<TypeDecl *, Type> operator[](unsigned index) const {
+  LookupTypeResultEntry operator[](unsigned index) const {
     return Results[index];
   }
 
-  std::pair<TypeDecl *, Type> front() const { return Results.front(); }
-  std::pair<TypeDecl *, Type> back() const { return Results.back(); }
+  LookupTypeResultEntry front() const { return Results.front(); }
+  LookupTypeResultEntry back() const { return Results.back(); }
 
   /// Add a result to the set of results.
-  void addResult(std::pair<TypeDecl *, Type> result) {
-    Results.push_back(result);
-  }
+  void addResult(LookupTypeResultEntry result) { Results.push_back(result); }
 
   /// \brief Determine whether this result set is ambiguous.
   bool isAmbiguous() const {
@@ -581,6 +588,7 @@ withoutContext(TypeResolutionOptions options, bool preserveSIL = false) {
   options -= TypeResolutionFlags::FunctionInput;
   options -= TypeResolutionFlags::VariadicFunctionInput;
   options -= TypeResolutionFlags::EnumCase;
+  options -= TypeResolutionFlags::SubscriptParameters;
   options -= TypeResolutionFlags::ImmediateOptionalTypeArgument;
   options -= TypeResolutionFlags::AllowIUO;
   if (!preserveSIL) options -= TypeResolutionFlags::SILType;
@@ -1377,6 +1385,12 @@ public:
   virtual void resolveDeclSignature(ValueDecl *VD) override {
     validateDeclForNameLookup(VD);
   }
+
+  /// Resolve the "overridden" declaration of the given declaration.
+  virtual void resolveOverriddenDecl(ValueDecl *VD) override;
+
+  /// Resolve the "is Objective-C" bit for the given declaration.
+  virtual void resolveIsObjC(ValueDecl *VD) override;
 
   virtual void bindExtension(ExtensionDecl *ext) override;
 

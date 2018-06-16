@@ -294,13 +294,12 @@ static StringRef getDefaultArgumentKindString(DefaultArgumentKind value) {
 }
 static StringRef getAccessorKindString(AccessorKind value) {
   switch (value) {
-    case AccessorKind::IsGetter: return "getter";
-    case AccessorKind::IsSetter: return "setter";
-    case AccessorKind::IsWillSet: return "willSet";
-    case AccessorKind::IsDidSet: return "didSet";
-    case AccessorKind::IsMaterializeForSet: return "materializeForSet";
-    case AccessorKind::IsAddressor: return "addressor";
-    case AccessorKind::IsMutableAddressor: return "mutableAddressor";
+#define ACCESSOR(ID)
+#define SINGLETON_ACCESSOR(ID, KEYWORD) \
+  case AccessorKind::ID: return #KEYWORD;
+#include "swift/AST/AccessorKinds.def"
+  case AccessorKind::Address: return "address";
+  case AccessorKind::MutableAddress: return "mutableAddress";
   }
 
   llvm_unreachable("Unhandled AccessorKind in switch.");
@@ -3359,6 +3358,25 @@ namespace {
       OS << ")";
     }
 
+    void printAnyFunctionParams(ArrayRef<AnyFunctionType::Param> params,
+                                StringRef label) {
+      printCommon(label, "function_params");
+      printField("num_params", params.size());
+      Indent += 2;
+      for (const auto &param : params) {
+        OS << "\n";
+        OS.indent(Indent) << "(";
+        PrintWithColorRAII(OS, TypeFieldColor) << "param";
+        if (param.hasLabel())
+          printField("name", param.getLabel().str());
+        dumpParameterFlags(param.getParameterFlags());
+        printRec(param.getType());
+        OS << ")";
+      }
+      Indent -= 2;
+      OS << ")";
+    }
+
     void printAnyFunctionTypeCommon(AnyFunctionType *T, StringRef label,
                                     StringRef name) {
       printCommon(label, name);
@@ -3373,7 +3391,10 @@ namespace {
       printFlag(!T->isNoEscape(), "escaping");
       printFlag(T->throws(), "throws");
 
-      printRec("input", T->getInput());
+      OS << "\n";
+      Indent += 2;
+      printAnyFunctionParams(T->getParams(), "input");
+      Indent -=2;
       printRec("output", T->getResult());
     }
 

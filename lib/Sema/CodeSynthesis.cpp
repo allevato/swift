@@ -160,7 +160,7 @@ static AccessorDecl *createGetterPrototype(AbstractStorageDecl *storage,
 
   auto getter = AccessorDecl::create(
       TC.Context, loc, /*AccessorKeywordLoc*/ loc,
-      AccessorKind::IsGetter, AddressorKind::NotAddressor, storage,
+      AccessorKind::Get, AddressorKind::NotAddressor, storage,
       staticLoc, StaticSpellingKind::None,
       /*Throws=*/false, /*ThrowsLoc=*/SourceLoc(),
       /*GenericParams=*/nullptr,
@@ -211,7 +211,7 @@ static AccessorDecl *createSetterPrototype(AbstractStorageDecl *storage,
   Type setterRetTy = TupleType::getEmpty(TC.Context);
   auto setter = AccessorDecl::create(
       TC.Context, loc, /*AccessorKeywordLoc*/ SourceLoc(),
-      AccessorKind::IsSetter, AddressorKind::NotAddressor, storage,
+      AccessorKind::Set, AddressorKind::NotAddressor, storage,
       /*StaticLoc=*/SourceLoc(), StaticSpellingKind::None,
       /*Throws=*/false, /*ThrowsLoc=*/SourceLoc(),
       /*GenericParams=*/nullptr, params, TypeLoc::withoutLoc(setterRetTy),
@@ -328,7 +328,7 @@ createMaterializeForSetPrototype(AbstractStorageDecl *storage,
 
   auto *materializeForSet = AccessorDecl::create(
       ctx, loc, /*AccessorKeywordLoc=*/SourceLoc(),
-      AccessorKind::IsMaterializeForSet, AddressorKind::NotAddressor, storage,
+      AccessorKind::MaterializeForSet, AddressorKind::NotAddressor, storage,
       /*StaticLoc=*/SourceLoc(), StaticSpellingKind::None,
       /*Throws=*/false, /*ThrowsLoc=*/SourceLoc(),
       (genericParams
@@ -453,11 +453,11 @@ static Expr *buildSubscriptIndexReference(ASTContext &ctx,
   auto accessorKind = accessor->getAccessorKind();
 
   // Ignore the value/buffer parameter.
-  if (accessorKind != AccessorKind::IsGetter)
+  if (accessorKind != AccessorKind::Get)
     params = params.slice(1);
 
   // Ignore the materializeForSet callback storage parameter.
-  if (accessorKind == AccessorKind::IsMaterializeForSet)
+  if (accessorKind == AccessorKind::MaterializeForSet)
     params = params.slice(1);
   
   // Okay, everything else should be forwarded, build the expression.
@@ -1881,12 +1881,21 @@ ConstructorDecl *swift::createImplicitConstructor(TypeChecker &tc,
   if (ICK == ImplicitConstructorKind::Memberwise) {
     assert(isa<StructDecl>(decl) && "Only struct have memberwise constructor");
 
-    // Computed and static properties are not initialized.
-    for (auto var : decl->getStoredProperties()) {
-      if (var->isImplicit())
+    for (auto member : decl->getMembers()) {
+      auto var = dyn_cast<VarDecl>(member);
+      if (!var)
+        continue;
+      
+      // Implicit, computed, and static properties are not initialized.
+      // The exception is lazy properties, which due to batch mode we may or
+      // may not have yet finalized, so they may currently be "stored" or
+      // "computed" in the current AST state.
+      if (var->isImplicit() || var->isStatic())
         continue;
       tc.validateDecl(var);
-      
+      if (!var->hasStorage() && !var->getAttrs().hasAttribute<LazyAttr>())
+        continue;
+
       // Initialized 'let' properties have storage, but don't get an argument
       // to the memberwise initializer since they already have an initial
       // value that cannot be overridden.
@@ -2030,9 +2039,12 @@ static void configureDesignatedInitAttributes(TypeChecker &tc,
     ctor->getAttrs().add(clonedAttr);
   }
 
-  // Make sure the constructor is only as available as its superclass's
-  // constructor.
-  AvailabilityInference::applyInferredAvailableAttrs(ctor, superclassCtor, ctx);
+  // If the superclass has its own availability, make sure the synthesized
+  // constructor is only as available as its superclass's constructor.
+  if (superclassCtor->getAttrs().hasAttribute<AvailableAttr>()) {
+    AvailabilityInference::applyInferredAvailableAttrs(
+        ctor, {classDecl, superclassCtor}, ctx);
+  }
 
   if (superclassCtor->isObjC()) {
     // Inherit the @objc name from the superclass initializer, if it

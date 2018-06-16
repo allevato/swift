@@ -780,12 +780,14 @@ static bool ParseIRGenArgs(IRGenOptions &Opts, ArgList &Args,
              "unknown -g<kind> option");
 
     if (Opts.DebugInfoKind > IRGenDebugInfoKind::LineTables) {
-      ArgStringList RenderedArgs;
-      for (auto A : Args)
-        A->render(Args, RenderedArgs);
-      CompilerInvocation::buildDWARFDebugFlags(Opts.DWARFDebugFlags,
-                                               RenderedArgs, SDKPath,
-                                               ResourceDir);
+      if (Args.hasArg(options::OPT_debug_info_store_invocation)) {
+        ArgStringList RenderedArgs;
+        for (auto A : Args)
+          A->render(Args, RenderedArgs);
+        CompilerInvocation::buildDWARFDebugFlags(Opts.DWARFDebugFlags,
+                                                 RenderedArgs, SDKPath,
+                                                 ResourceDir);
+      }
       // TODO: Should we support -fdebug-compilation-dir?
       llvm::SmallString<256> cwd;
       llvm::sys::fs::current_path(cwd);
@@ -977,9 +979,16 @@ static bool ParseMigratorArgs(MigratorOptions &Opts,
     auto &Triple = LangOpts.Target;
     bool isSwiftVersion3 = LangOpts.isSwiftVersion3();
 
+    llvm::SmallString<128> basePath;
+    if (auto DataDir = Args.getLastArg(OPT_api_diff_data_dir)) {
+      basePath = DataDir->getValue();
+    } else {
+      basePath = ResourcePath;
+      llvm::sys::path::append(basePath, "migrator");
+    }
+
     bool Supported = true;
-    llvm::SmallString<128> dataPath(ResourcePath);
-    llvm::sys::path::append(dataPath, "migrator");
+    llvm::SmallString<128> dataPath(basePath);
 
     if (Triple.isMacOSX())
       llvm::sys::path::append(dataPath,
@@ -996,8 +1005,7 @@ static bool ParseMigratorArgs(MigratorOptions &Opts,
     else
       Supported = false;
     if (Supported) {
-      llvm::SmallString<128> authoredDataPath(ResourcePath);
-      llvm::sys::path::append(authoredDataPath, "migrator");
+      llvm::SmallString<128> authoredDataPath(basePath);
       llvm::sys::path::append(authoredDataPath,
                               getScriptFileName("overlay", isSwiftVersion3));
       // Add authored list first to take higher priority.

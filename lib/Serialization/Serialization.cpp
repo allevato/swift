@@ -118,8 +118,11 @@ namespace {
       if (key.getKind() == DeclBaseName::Kind::Normal) {
         keyLength += key.getIdentifier().str().size(); // The name's length
       }
+      assert(keyLength == static_cast<uint16_t>(keyLength));
 
       uint32_t dataLength = (sizeof(uint32_t) + 1) * data.size();
+      assert(dataLength == static_cast<uint16_t>(dataLength));
+
       endian::Writer<little> writer(out);
       writer.write<uint16_t>(keyLength);
       writer.write<uint16_t>(dataLength);
@@ -195,12 +198,14 @@ namespace {
                                                     key_type_ref key,
                                                     data_type_ref data) {
       uint32_t keyLength = key.str().size();
+      assert(keyLength == static_cast<uint16_t>(keyLength));
       uint32_t dataLength = (sizeof(uint32_t) * 2) * data.size();
       for (auto dataPair : data) {
         int32_t nameData = getNameDataForBase(dataPair.first);
         if (nameData > 0)
           dataLength += nameData;
       }
+      assert(dataLength == static_cast<uint16_t>(dataLength));
       endian::Writer<little> writer(out);
       writer.write<uint16_t>(keyLength);
       writer.write<uint16_t>(dataLength);
@@ -242,9 +247,11 @@ namespace {
                                                     key_type_ref key,
                                                     data_type_ref data) {
       uint32_t keyLength = key.size();
+      assert(keyLength == static_cast<uint16_t>(keyLength));
       uint32_t dataLength = sizeof(uint32_t);
       endian::Writer<little> writer(out);
       writer.write<uint16_t>(keyLength);
+      // No need to write the data length; it's constant.
       return { keyLength, dataLength };
     }
 
@@ -281,7 +288,9 @@ namespace {
                                                     key_type_ref key,
                                                     data_type_ref data) {
       uint32_t keyLength = key.str().size();
+      assert(keyLength == static_cast<uint16_t>(keyLength));
       uint32_t dataLength = (sizeof(uint32_t) * 2) * data.size();
+      assert(dataLength == static_cast<uint16_t>(dataLength));
       endian::Writer<little> writer(out);
       writer.write<uint16_t>(keyLength);
       writer.write<uint16_t>(dataLength);
@@ -334,6 +343,7 @@ namespace {
       if (key.getKind() == DeclBaseName::Kind::Normal) {
         keyLength += key.getIdentifier().str().size(); // The name's length
       }
+      assert(keyLength == static_cast<uint16_t>(keyLength));
       uint32_t dataLength = sizeof(uint32_t);
       endian::Writer<little> writer(out);
       writer.write<uint16_t>(keyLength);
@@ -387,12 +397,11 @@ namespace {
       // This will trap if a single ValueDecl has more than 16383 members
       // with the same DeclBaseName. Seems highly unlikely.
       assert((data.size() < (1 << 14)) && "Too many members");
-      uint32_t keyLength = sizeof(uint32_t); // key DeclID
       uint32_t dataLength = sizeof(uint32_t) * data.size(); // value DeclIDs
       endian::Writer<little> writer(out);
-      writer.write<uint16_t>(keyLength);
+      // No need to write the key length; it's constant.
       writer.write<uint16_t>(dataLength);
-      return { keyLength, dataLength };
+      return { sizeof(uint32_t), dataLength };
     }
 
     void EmitKey(raw_ostream &out, key_type_ref key, unsigned len) {
@@ -473,9 +482,11 @@ static const Decl *getDeclForContext(const DeclContext *DC) {
 namespace {
   struct Accessors {
     StorageKind Kind;
-    FuncDecl *Get = nullptr, *Set = nullptr, *MaterializeForSet = nullptr;
-    FuncDecl *Address = nullptr, *MutableAddress = nullptr;
-    FuncDecl *WillSet = nullptr, *DidSet = nullptr;
+    SmallVector<AccessorDecl *, 8> Decls;
+
+    void add(AccessorDecl *accessor) {
+      if (accessor) Decls.push_back(accessor);
+    }
   };
 } // end anonymous namespace
 
@@ -506,8 +517,8 @@ static Accessors getAccessors(const AbstractStorageDecl *storage) {
   case AbstractStorageDecl::Addressed:
   case AbstractStorageDecl::AddressedWithTrivialAccessors:
   case AbstractStorageDecl::ComputedWithMutableAddress:
-    accessors.Address = storage->getAddressor();
-    accessors.MutableAddress = storage->getMutableAddressor();
+    accessors.add(storage->getAddressor());
+    accessors.add(storage->getMutableAddressor());
     if (storageKind == AbstractStorageDecl::Addressed)
       return accessors;
     goto getset;
@@ -515,16 +526,16 @@ static Accessors getAccessors(const AbstractStorageDecl *storage) {
   case AbstractStorageDecl::StoredWithObservers:
   case AbstractStorageDecl::InheritedWithObservers:
   case AbstractStorageDecl::AddressedWithObservers:
-    accessors.WillSet = storage->getWillSetFunc();
-    accessors.DidSet = storage->getDidSetFunc();
+    accessors.add(storage->getWillSetFunc());
+    accessors.add(storage->getDidSetFunc());
     goto getset;
 
   case AbstractStorageDecl::StoredWithTrivialAccessors:
   case AbstractStorageDecl::Computed:
   getset:
-    accessors.Get = storage->getGetter();
-    accessors.Set = storage->getSetter();
-    accessors.MaterializeForSet = storage->getMaterializeForSetFunc();
+    accessors.add(storage->getGetter());
+    accessors.add(storage->getSetter());
+    accessors.add(storage->getMaterializeForSetFunc());
     return accessors;
   }
   llvm_unreachable("bad storage kind");
@@ -1823,16 +1834,9 @@ void Serializer::writeDefaultWitnessTable(const ProtocolDecl *proto,
 
 static serialization::AccessorKind getStableAccessorKind(swift::AccessorKind K){
   switch (K) {
-#define CASE(NAME) \
-  case swift::AccessorKind::Is##NAME: return serialization::NAME;
-  CASE(Getter)
-  CASE(Setter)
-  CASE(WillSet)
-  CASE(DidSet)
-  CASE(MaterializeForSet)
-  CASE(Addressor)
-  CASE(MutableAddressor)
-#undef CASE
+#define ACCESSOR(ID) \
+  case swift::AccessorKind::ID: return serialization::ID;
+#include "swift/AST/AccessorKinds.def"
   }
 
   llvm_unreachable("Unhandled AccessorKind in switch.");
@@ -3120,9 +3124,11 @@ void Serializer::writeDecl(const Decl *D) {
         getRawStableAccessLevel(var->getSetterFormalAccess());
 
     Type ty = var->getInterfaceType();
-    SmallVector<TypeID, 2> dependencies;
+    SmallVector<TypeID, 2> accessorsAndDependencies;
+    for (auto accessor : accessors.Decls)
+      accessorsAndDependencies.push_back(addDeclRef(accessor));
     for (Type dependency : collectDependenciesFromType(ty->getCanonicalType()))
-      dependencies.push_back(addTypeRef(dependency));
+      accessorsAndDependencies.push_back(addTypeRef(dependency));
 
     unsigned abbrCode = DeclTypeAbbrCodes[VarLayout::Code];
     VarLayout::emitRecord(Out, ScratchRecord, abbrCode,
@@ -3136,17 +3142,11 @@ void Serializer::writeDecl(const Decl *D) {
                           var->isGetterMutating(),
                           var->isSetterMutating(),
                           (unsigned) accessors.Kind,
+                          accessors.Decls.size(),
                           addTypeRef(ty),
-                          addDeclRef(accessors.Get),
-                          addDeclRef(accessors.Set),
-                          addDeclRef(accessors.MaterializeForSet),
-                          addDeclRef(accessors.Address),
-                          addDeclRef(accessors.MutableAddress),
-                          addDeclRef(accessors.WillSet),
-                          addDeclRef(accessors.DidSet),
                           addDeclRef(var->getOverriddenDecl()),
                           rawAccessLevel, rawSetterAccessLevel,
-                          dependencies);
+                          accessorsAndDependencies);
     break;
   }
 
@@ -3339,15 +3339,19 @@ void Serializer::writeDecl(const Decl *D) {
 
     auto contextID = addDeclContextRef(subscript->getDeclContext());
 
+    Accessors accessors = getAccessors(subscript);
+
     SmallVector<IdentifierID, 4> nameComponentsAndDependencies;
     for (auto argName : subscript->getFullName().getArgumentNames())
       nameComponentsAndDependencies.push_back(addDeclBaseNameRef(argName));
+
+    for (auto accessor : accessors.Decls)
+      nameComponentsAndDependencies.push_back(addDeclRef(accessor));
 
     Type ty = subscript->getInterfaceType();
     for (Type dependency : collectDependenciesFromType(ty->getCanonicalType()))
       nameComponentsAndDependencies.push_back(addTypeRef(dependency));
 
-    Accessors accessors = getAccessors(subscript);
     uint8_t rawAccessLevel =
       getRawStableAccessLevel(subscript->getFormalAccess());
     uint8_t rawSetterAccessLevel = rawAccessLevel;
@@ -3363,16 +3367,10 @@ void Serializer::writeDecl(const Decl *D) {
                                 subscript->isGetterMutating(),
                                 subscript->isSetterMutating(),
                                 (unsigned) accessors.Kind,
+                                accessors.Decls.size(),
                                 addGenericEnvironmentRef(
                                             subscript->getGenericEnvironment()),
                                 addTypeRef(ty),
-                                addDeclRef(accessors.Get),
-                                addDeclRef(accessors.Set),
-                                addDeclRef(accessors.MaterializeForSet),
-                                addDeclRef(accessors.Address),
-                                addDeclRef(accessors.MutableAddress),
-                                addDeclRef(accessors.WillSet),
-                                addDeclRef(accessors.DidSet),
                                 addDeclRef(subscript->getOverriddenDecl()),
                                 rawAccessLevel,
                                 rawSetterAccessLevel,

@@ -1417,12 +1417,6 @@ bool ConstraintSystem::solve(Expr *const expr,
   // Set up solver state.
   SolverState state(expr, *this);
 
-  // Simplify any constraints left active after constraint generation
-  // and optimization. Return if the resulting system has no
-  // solutions.
-  if (failedConstraint || simplify())
-    return true;
-
   // Solve the system.
   solveRec(solutions, allowFreeTypeVariables);
 
@@ -2151,10 +2145,8 @@ bool DisjunctionChoice::isSymmetricOperator() const {
   if (paramList->size() != 2)
     return true;
 
-  auto firstType =
-      paramList->get(0)->getInterfaceType()->getWithoutSpecifierType();
-  auto secondType =
-      paramList->get(1)->getInterfaceType()->getWithoutSpecifierType();
+  auto firstType = paramList->get(0)->getInterfaceType();
+  auto secondType = paramList->get(1)->getInterfaceType();
   return firstType->isEqual(secondType);
 }
 

@@ -1005,6 +1005,28 @@ static void VisitNodeDestructor(
   }
 }
 
+static void VisitNodeDependentMember(ASTContext *ast,
+                                     Demangle::NodePointer cur_node,
+                                     VisitNodeResult &result) {
+  if (cur_node->getNumChildren() == 2) {
+    auto dep = cur_node->getChild(0);
+    auto assoc = cur_node->getChild(1);
+    VisitNodeResult dependency;
+    if (dep->getKind() == Demangle::Node::Kind::Type &&
+        assoc->getKind() == Demangle::Node::Kind::DependentAssociatedTypeRef) {
+      VisitNode(ast, dep, dependency);
+      if (dependency._types.size() == 1 && assoc->hasText()) {
+        Identifier name = ast->getIdentifier(assoc->getText());
+        result._types.push_back(
+            DependentMemberType::get(dependency._types[0], name));
+        return;
+      }
+    }
+  }
+  result._error = "bad dependent member type";
+}
+
+
 static Demangle::NodePointer DropGenericSignature(
     Demangle::NodePointer cur_node) {
   if (cur_node->getKind() != Demangle::Node::Kind::DependentGenericType)
@@ -1884,6 +1906,30 @@ static void VisitNodeInOut(
   }
 }
 
+static void VisitNodeExistentialMetatype(ASTContext *ast,
+                                         Demangle::NodePointer cur_node,
+                                         VisitNodeResult &result) {
+  VisitNodeResult type_result;
+  Optional<MetatypeRepresentation> metatype_repr;
+
+  for (auto &child : *cur_node) {
+    switch (child->getKind()) {
+    case Demangle::Node::Kind::Type:
+      VisitNode(ast, child, type_result);
+      break;
+    default:
+      break;
+    }
+  }
+
+  if (type_result.HasSingleType())
+    result._types.push_back(
+        ExistentialMetatypeType::get(type_result._types[0], metatype_repr));
+  else
+    result._error = stringWithFormat(
+        "instance type for existential metatype cannot be uniquely resolved");
+}
+
 static void VisitNodeMetatype(
     ASTContext *ast,
     Demangle::NodePointer cur_node, VisitNodeResult &result) {
@@ -2285,6 +2331,10 @@ static void VisitNode(
     VisitNodeConstructor(ast, node, result);
     break;
 
+ case Demangle::Node::Kind::DependentMemberType:
+    VisitNodeDependentMember(ast, node, result);
+    break;
+
   case Demangle::Node::Kind::Destructor:
     VisitNodeDestructor(ast, node, result);
     break;
@@ -2331,6 +2381,10 @@ static void VisitNode(
 
   case Demangle::Node::Kind::InOut:
     VisitNodeInOut(ast, node, result);
+    break;
+
+  case Demangle::Node::Kind::ExistentialMetatype:
+    VisitNodeExistentialMetatype(ast, node, result);
     break;
 
   case Demangle::Node::Kind::Metatype:

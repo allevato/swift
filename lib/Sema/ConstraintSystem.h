@@ -1553,6 +1553,10 @@ private:
 
   /// Add a new type variable that was already created.
   void addTypeVariable(TypeVariableType *typeVar);
+  
+  /// \brief Add a constraint from the subscript base to the root of the key
+  /// path literal to the constraint system.
+  void addKeyPathApplicationRootConstraint(Type root, ConstraintLocatorBuilder locator);
 
 public:
   /// \brief Lookup for a member with the given name in the given base type.
@@ -2175,6 +2179,15 @@ public:
                    ConstraintLocatorBuilder locator,
                    OpenedTypeMap &replacements);
 
+  /// Given generic signature open its generic requirements,
+  /// using substitution function, and record them in the
+  /// constraint system for further processing.
+  void openGenericRequirements(DeclContext *outerDC,
+                               GenericSignature *signature,
+                               bool skipProtocolSelfConstraint,
+                               ConstraintLocatorBuilder locator,
+                               llvm::function_ref<Type(Type)> subst);
+
   /// Record the set of opened types for the given locator.
   void recordOpenedTypes(
          ConstraintLocatorBuilder locator,
@@ -2194,6 +2207,7 @@ public:
                           ValueDecl *decl,
                           FunctionRefKind functionRefKind,
                           ConstraintLocatorBuilder locator,
+                          DeclContext *useDC,
                           const DeclRefExpr *base = nullptr);
 
   /// \brief Retrieve the type of a reference to the given value declaration,
@@ -3087,6 +3101,15 @@ public:
   /// \brief Determine if we've already explored too many paths in an
   /// attempt to solve this expression.
   bool getExpressionTooComplex(SmallVectorImpl<Solution> const &solutions) {
+    auto used = TC.Context.getSolverMemory();
+    for (auto const& s : solutions) {
+      used += s.getTotalMemory();
+    }
+    MaxMemory = std::max(used, MaxMemory);
+    auto threshold = TC.Context.LangOpts.SolverMemoryThreshold;
+    if (MaxMemory > threshold)
+      return true;
+
     auto timeoutThresholdInMillis = TC.getExpressionTimeoutThresholdInSeconds();
     if (Timer && Timer->isExpired(timeoutThresholdInMillis)) {
       // Disable warnings about expressions that go over the warning
@@ -3110,18 +3133,12 @@ public:
         return true;
 
       // Bail out once we've looked at a really large number of
-      // choices, even if we haven't used a huge amount of memory.
+      // choices.
       if (CountScopes > TC.Context.LangOpts.SolverBindingThreshold)
         return true;
     }
 
-    auto used = TC.Context.getSolverMemory();
-    for (auto const& s : solutions) {
-      used += s.getTotalMemory();
-    }
-    MaxMemory = std::max(used, MaxMemory);
-    auto threshold = TC.Context.LangOpts.SolverMemoryThreshold;
-    return MaxMemory > threshold;
+    return false;
   }
   
   LLVM_ATTRIBUTE_DEPRECATED(
@@ -3226,7 +3243,7 @@ public:
 /// \returns true if the call arguments could not be matched to the parameters.
 bool matchCallArguments(ArrayRef<AnyFunctionType::Param> argTuple,
                         ArrayRef<AnyFunctionType::Param> params,
-                        const SmallVectorImpl<bool> &defaultMap,
+                        const llvm::SmallBitVector &defaultMap,
                         bool hasTrailingClosure,
                         bool allowFixes,
                         MatchCallArgumentListener &listener,

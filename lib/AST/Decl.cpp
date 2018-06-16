@@ -177,25 +177,25 @@ DescriptiveDeclKind Decl::getDescriptiveKind() const {
      auto accessor = cast<AccessorDecl>(this);
 
      switch (accessor->getAccessorKind()) {
-     case AccessorKind::IsGetter:
+     case AccessorKind::Get:
        return DescriptiveDeclKind::Getter;
 
-     case AccessorKind::IsSetter:
+     case AccessorKind::Set:
        return DescriptiveDeclKind::Setter;
 
-     case AccessorKind::IsWillSet:
+     case AccessorKind::WillSet:
        return DescriptiveDeclKind::WillSet;
 
-     case AccessorKind::IsDidSet:
+     case AccessorKind::DidSet:
        return DescriptiveDeclKind::DidSet;
 
-     case AccessorKind::IsAddressor:
+     case AccessorKind::Address:
        return DescriptiveDeclKind::Addressor;
 
-     case AccessorKind::IsMutableAddressor:
+     case AccessorKind::MutableAddress:
        return DescriptiveDeclKind::MutableAddressor;
 
-     case AccessorKind::IsMaterializeForSet:
+     case AccessorKind::MaterializeForSet:
        return DescriptiveDeclKind::MaterializeForSet;
      }
      llvm_unreachable("bad accessor kind");
@@ -1960,14 +1960,7 @@ bool ValueDecl::hasInterfaceType() const {
 
 Type ValueDecl::getInterfaceType() const {
   assert(hasInterfaceType() && "No interface type was set");
-  auto ty = TypeAndAccess.getPointer();
-  // FIXME(Remove InOutType): This grossness will go away when Sema is weaned
-  // off of InOutType.  Until then we should respect our parameter flags and
-  // return the type it expects.
-  if (auto *VD = dyn_cast<ParamDecl>(this)) {
-    ty = VD->isInOut() ? InOutType::get(ty) : ty;
-  }
-  return ty;
+  return TypeAndAccess.getPointer();
 }
 
 void ValueDecl::setInterfaceType(Type type) {
@@ -3495,19 +3488,7 @@ bool ProtocolDecl::existentialTypeSupportedSlow(LazyResolver *resolver) {
   if (isObjC())
     return true;
 
-  // Resolve the protocol's type.
-  if (resolver && !hasInterfaceType())
-    resolver->resolveDeclSignature(this);
-
   for (auto member : getMembers()) {
-    if (auto vd = dyn_cast<ValueDecl>(member)) {
-      if (resolver && !vd->hasInterfaceType())
-        resolver->resolveDeclSignature(vd);
-    }
-
-    if (member->isInvalid())
-      continue;
-
     // Check for associated types.
     if (isa<AssociatedTypeDecl>(member)) {
       // An existential type cannot be used if the protocol has an
@@ -3520,9 +3501,12 @@ bool ProtocolDecl::existentialTypeSupportedSlow(LazyResolver *resolver) {
     if (auto valueMember = dyn_cast<ValueDecl>(member)) {
       // materializeForSet has a funny type signature.
       if (auto accessor = dyn_cast<AccessorDecl>(member)) {
-        if (accessor->getAccessorKind() == AccessorKind::IsMaterializeForSet)
+        if (accessor->getAccessorKind() == AccessorKind::MaterializeForSet)
           continue;
       }
+
+      if (resolver && !valueMember->hasInterfaceType())
+        resolver->resolveDeclSignature(valueMember);
 
       if (!isAvailableInExistential(valueMember)) {
         Bits.ProtocolDecl.ExistentialTypeSupported = false;
@@ -3633,19 +3617,19 @@ AbstractStorageDecl::getAccessorFunction(AccessorKind kind) const {
   // storage doesn't have.  It can be convenient to ask for accessors
   // before the declaration is fully-configured.
   switch (kind) {
-  case AccessorKind::IsGetter:
+  case AccessorKind::Get:
     return getGetter();
-  case AccessorKind::IsSetter:
+  case AccessorKind::Set:
     return getSetter();
-  case AccessorKind::IsMaterializeForSet:
+  case AccessorKind::MaterializeForSet:
     return getMaterializeForSetFunc();
-  case AccessorKind::IsAddressor:
+  case AccessorKind::Address:
     return hasAddressors() ? getAddressor() : nullptr;
-  case AccessorKind::IsMutableAddressor:
+  case AccessorKind::MutableAddress:
     return hasAddressors() ? getMutableAddressor() : nullptr;
-  case AccessorKind::IsDidSet:
+  case AccessorKind::DidSet:
     return hasObservers() ? getDidSetFunc() : nullptr;
-  case AccessorKind::IsWillSet:
+  case AccessorKind::WillSet:
     return hasObservers() ? getWillSetFunc() : nullptr;
   }
   llvm_unreachable("bad accessor kind!");
@@ -3691,7 +3675,7 @@ void AbstractStorageDecl::configureGetSetRecord(GetSetRecord *getSetInfo,
                                                 AccessorDecl *getter,
                                                 AccessorDecl *setter,
                                               AccessorDecl *materializeForSet) {
-  assert(isAccessor(getter, IsGetter, this));
+  assert(isAccessor(getter, Get, this));
   getSetInfo->Get = getter;
 
   configureSetRecord(getSetInfo, setter, materializeForSet);
@@ -3700,8 +3684,8 @@ void AbstractStorageDecl::configureGetSetRecord(GetSetRecord *getSetInfo,
 void AbstractStorageDecl::configureSetRecord(GetSetRecord *getSetInfo,
                                              AccessorDecl *setter,
                                              AccessorDecl *materializeForSet) {
-  assert(isAccessor(setter, IsSetter, this));
-  assert(isAccessor(materializeForSet, IsMaterializeForSet, this));
+  assert(isAccessor(setter, Set, this));
+  assert(isAccessor(materializeForSet, MaterializeForSet, this));
   getSetInfo->Set = setter;
   getSetInfo->MaterializeForSet = materializeForSet;
 
@@ -3725,8 +3709,8 @@ void AbstractStorageDecl::configureSetRecord(GetSetRecord *getSetInfo,
 void AbstractStorageDecl::configureAddressorRecord(AddressorRecord *record,
                                                    AccessorDecl *addressor,
                                                AccessorDecl *mutableAddressor) {
-  assert(isAccessor(addressor, IsAddressor, this));
-  assert(isAccessor(mutableAddressor, IsMutableAddressor, this));
+  assert(isAccessor(addressor, Address, this));
+  assert(isAccessor(mutableAddressor, MutableAddress, this));
   record->Address = addressor;
   record->MutableAddress = mutableAddressor;
 }
@@ -3734,8 +3718,8 @@ void AbstractStorageDecl::configureAddressorRecord(AddressorRecord *record,
 void AbstractStorageDecl::configureObservingRecord(ObservingRecord *record,
                                                    AccessorDecl *willSet,
                                                    AccessorDecl *didSet) {
-  assert(isAccessor(willSet, IsWillSet, this));
-  assert(isAccessor(didSet, IsDidSet, this));
+  assert(isAccessor(willSet, WillSet, this));
+  assert(isAccessor(didSet, DidSet, this));
   record->WillSet = willSet;
   record->DidSet = didSet;
 }
@@ -3757,18 +3741,18 @@ void AbstractStorageDecl::makeComputed(SourceLoc LBraceLoc,
   setStorageKind(Computed);
 }
 
-void AbstractStorageDecl::setComputedSetter(AccessorDecl *Set) {
+void AbstractStorageDecl::setComputedSetter(AccessorDecl *setter) {
   assert(getStorageKind() == Computed && "Not a computed variable");
   assert(getGetter() && "sanity check: missing getter");
   assert(!getSetter() && "already has a setter");
   assert(hasClangNode() && "should only be used for ObjC properties");
-  assert(Set && "should not be called for readonly properties");
-  assert(isAccessor(Set, IsSetter, this));
-  GetSetInfo.getPointer()->Set = Set;
+  assert(setter && "should not be called for readonly properties");
+  assert(isAccessor(setter, Set, this));
+  GetSetInfo.getPointer()->Set = setter;
   if (auto setterAccess = GetSetInfo.getInt()) {
-    assert(!Set->hasAccess() ||
-           Set->getFormalAccess() == setterAccess.getValue());
-    Set->overwriteAccess(setterAccess.getValue());
+    assert(!setter->hasAccess() ||
+           setter->getFormalAccess() == setterAccess.getValue());
+    setter->overwriteAccess(setterAccess.getValue());
   }
 }
 
@@ -3810,7 +3794,7 @@ void AbstractStorageDecl::setMaterializeForSetFunc(AccessorDecl *accessor) {
   assert(hasAccessorFunctions() && "No accessors for declaration!");
   assert(getSetter() && "declaration is not settable");
   assert(!getMaterializeForSetFunc() && "already has a materializeForSet");
-  assert(isAccessor(accessor, IsMaterializeForSet, this));
+  assert(isAccessor(accessor, MaterializeForSet, this));
   GetSetInfo.getPointer()->MaterializeForSet = accessor;
   if (auto setterAccess = GetSetInfo.getInt()) {
     assert(!accessor->hasAccess() ||
@@ -4081,13 +4065,9 @@ Type VarDecl::getType() const {
   if (!typeInContext) {
     const_cast<VarDecl *>(this)->typeInContext =
       getDeclContext()->mapTypeIntoContext(
-        getInterfaceType())->getInOutObjectType();
+        getInterfaceType());
   }
 
-  // FIXME(Remove InOutType): This grossness will go away when Sema is weaned
-  // off of InOutType.  Until then we should respect our parameter flags and
-  // return the type it expects.
-  if (isInOut()) return InOutType::get(typeInContext);
   return typeInContext;
 }
 
@@ -4375,8 +4355,9 @@ ParamDecl::ParamDecl(Specifier specifier,
             /*IsCaptureList*/false, parameterNameLoc, parameterName, ty, dc),
   ArgumentName(argumentName), ArgumentNameLoc(argumentNameLoc),
   SpecifierLoc(specifierLoc) {
-    assert(specifier != Specifier::Var &&
-           "'var' cannot appear on parameters; you meant 'inout'");
+
+  assert(specifier != Specifier::Var &&
+         "'var' cannot appear on parameters; you meant 'inout'");
   Bits.ParamDecl.IsTypeLocImplicit = false;
   Bits.ParamDecl.defaultArgumentKind =
     static_cast<unsigned>(DefaultArgumentKind::None);
@@ -4388,7 +4369,7 @@ ParamDecl::ParamDecl(ParamDecl *PD, bool withTypes)
   : VarDecl(DeclKind::Param, /*IsStatic*/false, PD->getSpecifier(),
             /*IsCaptureList*/false, PD->getNameLoc(), PD->getName(),
             PD->hasType() && withTypes
-              ? PD->getType()->getInOutObjectType()
+              ? PD->getType()
               : Type(),
             PD->getDeclContext()),
     ArgumentName(PD->getArgumentName()),
@@ -4675,22 +4656,22 @@ DeclName AbstractFunctionDecl::getEffectiveFullName() const {
     auto subscript = dyn_cast<SubscriptDecl>(storage);
     switch (auto accessorKind = accessor->getAccessorKind()) {
     // These don't have any extra implicit parameters.
-    case AccessorKind::IsAddressor:
-    case AccessorKind::IsMutableAddressor:
-    case AccessorKind::IsGetter:
+    case AccessorKind::Address:
+    case AccessorKind::MutableAddress:
+    case AccessorKind::Get:
       return subscript ? subscript->getFullName()
                        : DeclName(ctx, storage->getBaseName(),
                                   ArrayRef<Identifier>());
 
-    case AccessorKind::IsSetter:
-    case AccessorKind::IsMaterializeForSet:
-    case AccessorKind::IsDidSet:
-    case AccessorKind::IsWillSet: {
+    case AccessorKind::Set:
+    case AccessorKind::MaterializeForSet:
+    case AccessorKind::DidSet:
+    case AccessorKind::WillSet: {
       SmallVector<Identifier, 4> argNames;
       // The implicit value/buffer parameter.
       argNames.push_back(Identifier());
       // The callback storage parameter on materializeForSet.
-      if (accessorKind  == AccessorKind::IsMaterializeForSet)
+      if (accessorKind  == AccessorKind::MaterializeForSet)
         argNames.push_back(Identifier());
       // The subscript index parameters.
       if (subscript) {
@@ -4981,13 +4962,13 @@ static bool requiresNewVTableEntry(const AbstractFunctionDecl *decl) {
 
   if (auto *accessor = dyn_cast<AccessorDecl>(decl)) {
     switch (accessor->getAccessorKind()) {
-    case AccessorKind::IsGetter:
-    case AccessorKind::IsSetter:
+    case AccessorKind::Get:
+    case AccessorKind::Set:
       break;
-    case AccessorKind::IsAddressor:
-    case AccessorKind::IsMutableAddressor:
+    case AccessorKind::Address:
+    case AccessorKind::MutableAddress:
       return false;
-    case AccessorKind::IsMaterializeForSet:
+    case AccessorKind::MaterializeForSet:
       // Special case -- materializeForSet on dynamic storage is not
       // itself dynamic, but should be treated as such for the
       // purpose of constructing a vtable.
@@ -4995,8 +4976,8 @@ static bool requiresNewVTableEntry(const AbstractFunctionDecl *decl) {
       if (accessor->getStorage()->isDynamic())
         return false;
       break;
-    case AccessorKind::IsWillSet:
-    case AccessorKind::IsDidSet:
+    case AccessorKind::WillSet:
+    case AccessorKind::DidSet:
       return false;
     }
   }

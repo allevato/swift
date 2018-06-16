@@ -123,7 +123,7 @@ static Type getStdlibType(TypeChecker &TC, Type &cached, DeclContext *dc,
                                                   TC.Context.getIdentifier(
                                                     name));
     if (lookup)
-      cached = lookup.back().second;
+      cached = lookup.back().MemberType;
   }
   return cached;
 }
@@ -203,7 +203,7 @@ static Type getObjectiveCNominalType(TypeChecker &TC,
   if (auto result = TC.lookupMemberType(dc, ModuleType::get(module), TypeName,
                                         lookupOptions)) {
     for (auto pair : result) {
-      if (auto nominal = dyn_cast<NominalTypeDecl>(pair.first)) {
+      if (auto nominal = dyn_cast<NominalTypeDecl>(pair.Member)) {
         cache = nominal->getDeclaredType();
         return cache;
       }
@@ -934,14 +934,14 @@ static Type diagnoseUnknownType(TypeChecker &tc, DeclContext *dc,
                                                  relookupOptions);
   if (inaccessibleMembers) {
     // FIXME: What if the unviable candidates have different levels of access?
-    const TypeDecl *first = inaccessibleMembers.front().first;
+    const TypeDecl *first = inaccessibleMembers.front().Member;
     tc.diagnose(comp->getIdLoc(), diag::candidate_inaccessible,
                 comp->getIdentifier(), first->getFormalAccess());
 
     // FIXME: If any of the candidates (usually just one) are in the same module
     // we could offer a fix-it.
     for (auto lookupResult : inaccessibleMembers)
-      tc.diagnose(lookupResult.first, diag::kind_declared_here,
+      tc.diagnose(lookupResult.Member, diag::kind_declared_here,
                   DescriptiveDeclKind::Type);
 
     // Don't try to recover here; we'll get more access-related diagnostics
@@ -1254,7 +1254,8 @@ static Type resolveNestedIdentTypeComponent(
               bool diagnoseErrors,
               GenericTypeResolver *resolver,
               UnsatisfiedDependency *unsatisfiedDependency) {
-  auto maybeDiagnoseBadMemberType = [&](TypeDecl *member, Type memberType) {
+  auto maybeDiagnoseBadMemberType = [&](TypeDecl *member, Type memberType,
+                                        AssociatedTypeDecl *inferredAssocType) {
     // Diagnose invalid cases.
     if (TC.isUnsupportedMemberTypeAccess(parentTy, member)) {
       if (diagnoseErrors) {
@@ -1285,20 +1286,21 @@ static Type resolveNestedIdentTypeComponent(
       }
     }
 
+    // Diagnose a bad conformance reference if we need to.
+    if (inferredAssocType && diagnoseErrors && memberType &&
+        memberType->hasError()) {
+      maybeDiagnoseBadConformanceRef(TC, DC, parentTy, comp->getLoc(),
+                                     inferredAssocType);
+    }
+
     // If we found a reference to an associated type or other member type that
     // was marked invalid, just return ErrorType to silence downstream errors.
     if (member->isInvalid())
       return ErrorType::get(TC.Context);
 
-    // Diagnose a bad conformance reference if we need to.
-    if (isa<AssociatedTypeDecl>(member) && diagnoseErrors &&
-        memberType && memberType->hasError()) {
-      maybeDiagnoseBadConformanceRef(TC, DC, parentTy, comp->getLoc(),
-                                     cast<AssociatedTypeDecl>(member));
-    }
-
     // At this point, we need to have resolved the type of the member.
-    if (!memberType || memberType->hasError()) return memberType;
+    if (!memberType || memberType->hasError())
+      return memberType;
 
     // If there are generic arguments, apply them now.
     if (!options.contains(TypeResolutionFlags::ResolveStructure)) {
@@ -1335,7 +1337,7 @@ static Type resolveNestedIdentTypeComponent(
   if (auto *typeDecl = comp->getBoundDecl()) {
     auto memberType = TC.substMemberTypeWithBase(DC->getParentModule(),
                                                  typeDecl, parentTy);
-    return maybeDiagnoseBadMemberType(typeDecl, memberType);
+    return maybeDiagnoseBadMemberType(typeDecl, memberType, nullptr);
   }
 
   // Phase 1: Find and bind the component decl.
@@ -1390,6 +1392,7 @@ static Type resolveNestedIdentTypeComponent(
   // If we didn't find anything, complain.
   Type memberType;
   TypeDecl *member = nullptr;
+  AssociatedTypeDecl *inferredAssocType = nullptr;
   if (!memberTypes) {
     // If we're not allowed to complain or we couldn't fix the
     // source, bail out.
@@ -1403,12 +1406,13 @@ static Type resolveNestedIdentTypeComponent(
     if (!member)
       return ErrorType::get(TC.Context);
   } else {
-    memberType = memberTypes.back().second;
-    member = memberTypes.back().first;
+    memberType = memberTypes.back().MemberType;
+    member = memberTypes.back().Member;
+    inferredAssocType = memberTypes.back().InferredAssociatedType;
     comp->setValue(member, nullptr);
   }
 
-  return maybeDiagnoseBadMemberType(member, memberType);
+  return maybeDiagnoseBadMemberType(member, memberType, inferredAssocType);
 }
 
 static Type resolveIdentTypeComponent(
@@ -2032,7 +2036,7 @@ Type TypeResolver::resolveAttributedType(TypeAttributes &attrs,
       attrs.clearAttribute(TAK_autoclosure);
     }
     
-    auto *FuncTyInput = dyn_cast<TupleTypeRepr>(fnRepr->getArgsTypeRepr());
+    auto *FuncTyInput = fnRepr->getArgsTypeRepr();
     if ((!FuncTyInput || FuncTyInput->getNumElements() != 0)
         && attrs.has(TAK_autoclosure)) {
       TC.diagnose(attrs.getLoc(TAK_autoclosure),
@@ -2193,11 +2197,7 @@ Type TypeResolver::resolveASTFunctionType(FunctionTypeRepr *repr,
   options -= TypeResolutionFlags::ImmediateFunctionInput;
   options -= TypeResolutionFlags::FunctionInput;
   options -= TypeResolutionFlags::TypeAliasUnderlyingType;
-  // FIXME: Until we remove the IUO type from the type system, we
-  // need to continue to parse IUOs in SIL tests so that we can
-  // match the types we generate from the importer.
-  if (!options.contains(TypeResolutionFlags::SILMode))
-    options -= TypeResolutionFlags::AllowIUO;
+  options -= TypeResolutionFlags::AllowIUO;
 
   Type inputTy = resolveType(repr->getArgsTypeRepr(),
                          options | TypeResolutionFlags::ImmediateFunctionInput);
@@ -2210,43 +2210,18 @@ Type TypeResolver::resolveASTFunctionType(FunctionTypeRepr *repr,
 
   // If this is a function type without parens around the parameter list,
   // diagnose this and produce a fixit to add them.
-  if (!isa<TupleTypeRepr>(repr->getArgsTypeRepr()) &&
-      !repr->isWarnedAbout()) {
-    auto args = repr->getArgsTypeRepr();
-
-    bool isVoid = false;
-    if (const auto Void = dyn_cast<SimpleIdentTypeRepr>(args)) {
-      if (Void->getIdentifier().str() == "Void") {
-        isVoid = true;
-      }
-    }
-    if (isVoid) {
-      TC.diagnose(args->getStartLoc(), diag::function_type_no_parens)
-        .fixItReplace(args->getStartLoc(), "()");
-    } else {
-      TC.diagnose(args->getStartLoc(), diag::function_type_no_parens)
-        .highlight(args->getSourceRange())
-        .fixItInsert(args->getStartLoc(), "(")
-        .fixItInsertAfter(args->getEndLoc(), ")");
-    }
-    
-    // Don't emit this warning three times when in generics.
-    repr->setWarned();
-  } else if (isa<TupleTypeRepr>(repr->getArgsTypeRepr()) &&
-             !repr->isWarnedAbout()) {
+  if (!repr->isWarnedAbout()) {
     // If someone wrote (Void) -> () in Swift 3, they probably meant
     // () -> (), but (Void) -> () is (()) -> () so emit a warning
     // asking if they meant () -> ().
     auto args = repr->getArgsTypeRepr();
-    if (const auto Tuple = dyn_cast<TupleTypeRepr>(args)) {
-      if (Tuple->getNumElements() == 1) {
-        if (const auto Void =
-            dyn_cast<SimpleIdentTypeRepr>(Tuple->getElementType(0))) {
-          if (Void->getIdentifier().str() == "Void") {
-            TC.diagnose(args->getStartLoc(), diag::paren_void_probably_void)
-              .fixItReplace(args->getSourceRange(), "()");
-            repr->setWarned();
-          }
+    if (args->getNumElements() == 1) {
+      if (const auto Void =
+          dyn_cast<SimpleIdentTypeRepr>(args->getElementType(0))) {
+        if (Void->getIdentifier().str() == "Void") {
+          TC.diagnose(args->getStartLoc(), diag::paren_void_probably_void)
+            .fixItReplace(args->getSourceRange(), "()");
+          repr->setWarned();
         }
       }
     }
@@ -2394,29 +2369,20 @@ Type TypeResolver::resolveSILFunctionType(FunctionTypeRepr *repr,
                                        &*resolveSILFunctionGenericParams);
     }
     
-    if (auto tuple = dyn_cast<TupleTypeRepr>(repr->getArgsTypeRepr())) {
-      // SIL functions cannot be variadic.
-      if (tuple->hasEllipsis()) {
-        TC.diagnose(tuple->getEllipsisLoc(), diag::sil_function_ellipsis);
-      }
-      // SIL functions cannot have parameter names.
-      for (auto &element : tuple->getElements()) {
-        if (element.UnderscoreLoc.isValid())
-          TC.diagnose(element.UnderscoreLoc, diag::sil_function_input_label);
-      }
+    auto argsTuple = repr->getArgsTypeRepr();
+    // SIL functions cannot be variadic.
+    if (argsTuple->hasEllipsis()) {
+      TC.diagnose(argsTuple->getEllipsisLoc(), diag::sil_function_ellipsis);
+    }
+    // SIL functions cannot have parameter names.
+    for (auto &element : argsTuple->getElements()) {
+      if (element.UnderscoreLoc.isValid())
+        TC.diagnose(element.UnderscoreLoc, diag::sil_function_input_label);
+    }
 
-      for (auto elt : tuple->getElements()) {
-        auto param = resolveSILParameter(elt.Type,
-                         options | TypeResolutionFlags::ImmediateFunctionInput);
-        params.push_back(param);
-        if (!param.getType()) return nullptr;
-
-        if (param.getType()->hasError())
-          hasError = true;
-      }
-    } else {
-      SILParameterInfo param = resolveSILParameter(repr->getArgsTypeRepr(),
-                         options | TypeResolutionFlags::ImmediateFunctionInput);
+    for (auto elt : argsTuple->getElements()) {
+      auto param = resolveSILParameter(elt.Type,
+                       options | TypeResolutionFlags::ImmediateFunctionInput);
       params.push_back(param);
       if (!param.getType()) return nullptr;
 
@@ -2712,13 +2678,13 @@ Type TypeResolver::resolveSpecifierTypeRepr(SpecifierTypeRepr *repr,
     StringRef name;
     switch (repr->getKind()) {
     case TypeReprKind::InOut:
-      name = "'inout'";
+      name = "inout";
       break;
     case TypeReprKind::Shared:
-      name = "'__shared'";
+      name = "__shared";
       break;
     case TypeReprKind::Owned:
-      name = "'__owned'";
+      name = "__owned";
       break;
     default:
       llvm_unreachable("unknown SpecifierTypeRepr kind");
@@ -2863,11 +2829,7 @@ Type TypeResolver::resolveTupleType(TupleTypeRepr *repr,
   auto elementOptions = options;
   if (repr->isParenType()) {
     // We also want to disallow IUO within even a paren.
-    // FIXME: Until we remove the IUO type from the type system, we
-    // need to continue to parse IUOs in SIL tests so that we can
-    // match the types we generate from the importer.
-    if (!options.contains(TypeResolutionFlags::SILMode))
-      elementOptions -= TypeResolutionFlags::AllowIUO;
+    elementOptions -= TypeResolutionFlags::AllowIUO;
 
     // If we have a single ParenType, don't clear the context bits; we
     // still want to parse the type contained therein as if it were in
@@ -2876,7 +2838,7 @@ Type TypeResolver::resolveTupleType(TupleTypeRepr *repr,
     // `FunctionInput` so that e.g. ((foo: Int)) -> Int is considered a
     // tuple argument rather than a labeled Int argument.
     if (isImmediateFunctionInput) {
-      elementOptions -= TypeResolutionFlags::ImmediateFunctionInput;
+      elementOptions = withoutContext(elementOptions, true);
       elementOptions |= TypeResolutionFlags::FunctionInput;
     }
   } else {
@@ -3364,7 +3326,7 @@ static bool isParamListRepresentableInObjC(TypeChecker &TC,
   unsigned NumParams = PL->size();
   for (unsigned ParamIndex = 0; ParamIndex != NumParams; ParamIndex++) {
     auto param = PL->get(ParamIndex);
-    
+
     // Swift Varargs are not representable in Objective-C.
     if (param->isVariadic()) {
       if (Diagnose && shouldDiagnoseObjCReason(Reason, TC.Context)) {
@@ -3373,10 +3335,22 @@ static bool isParamListRepresentableInObjC(TypeChecker &TC,
           .highlight(param->getSourceRange());
         describeObjCReason(TC, AFD, Reason);
       }
-      
+
       return false;
     }
-    
+
+    // Swift inout parameters are not representable in Objective-C.
+    if (param->isInOut()) {
+      if (Diagnose && shouldDiagnoseObjCReason(Reason, TC.Context)) {
+        TC.diagnose(param->getStartLoc(), diag::objc_invalid_on_func_inout,
+                    getObjCDiagnosticAttrKind(Reason))
+          .highlight(param->getSourceRange());
+        describeObjCReason(TC, AFD, Reason);
+      }
+
+      return false;
+    }
+
     if (param->getType()->isRepresentableIn(
           ForeignLanguage::ObjectiveC,
           const_cast<AbstractFunctionDecl *>(AFD)))
@@ -3576,8 +3550,8 @@ bool TypeChecker::isRepresentableInObjC(
     }
 
     switch (accessor->getAccessorKind()) {
-    case AccessorKind::IsDidSet:
-    case AccessorKind::IsWillSet:
+    case AccessorKind::DidSet:
+    case AccessorKind::WillSet:
         // willSet/didSet implementations are never exposed to objc, they are
         // always directly dispatched from the synthesized setter.
       if (Diagnose) {
@@ -3586,16 +3560,16 @@ bool TypeChecker::isRepresentableInObjC(
       }
       return false;
 
-    case AccessorKind::IsGetter:
-    case AccessorKind::IsSetter:
+    case AccessorKind::Get:
+    case AccessorKind::Set:
       return true;
 
-    case AccessorKind::IsMaterializeForSet:
+    case AccessorKind::MaterializeForSet:
       // materializeForSet is synthesized, so never complain about it
       return false;
 
-    case AccessorKind::IsAddressor:
-    case AccessorKind::IsMutableAddressor:
+    case AccessorKind::Address:
+    case AccessorKind::MutableAddress:
       if (Diagnose) {
         diagnose(accessor->getLoc(), diag::objc_addressor);
         describeObjCReason(*this, accessor, Reason);
@@ -3603,20 +3577,6 @@ bool TypeChecker::isRepresentableInObjC(
       return false;
     }
     llvm_unreachable("bad kind");
-  }
-
-  if (auto *FD = dyn_cast<FuncDecl>(AFD)) {
-    unsigned ExpectedParamPatterns = 1;
-    if (FD->getImplicitSelfDecl())
-      ExpectedParamPatterns++;
-    if (FD->getParameterLists().size() != ExpectedParamPatterns) {
-      if (Diagnose) {
-        diagnose(AFD->getLoc(), diag::objc_invalid_on_func_curried,
-                 getObjCDiagnosticAttrKind(Reason));
-        describeObjCReason(*this, AFD, Reason);
-      }
-      return false;
-    }
   }
 
   // As a special case, an initializer with a single, named parameter of type
