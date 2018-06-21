@@ -980,6 +980,22 @@ void Serializer::writeHeader(const SerializationOptions &options) {
               continue;
             }
           }
+          // Remap the absolute working directory path that the driver adds to
+          // the Clang arguments.
+          if (StringRef(*Arg) == "-working-directory") {
+            XCC.emit(ScratchRecord, *Arg);
+            auto Next = std::next(Arg);
+            if (Next != E) {
+              XCC.emit(ScratchRecord, options.DebugPrefixMap.remapPath(*Next));
+              ++Arg;
+              continue;
+            }
+          }
+          // Filter out any -fdebug-prefix-map flags. They're only needed during
+          // codegen, not when the module is loaded for debugging.
+          if (StringRef(*Arg).startswith("-fdebug-prefix-map="))
+            continue;
+
           XCC.emit(ScratchRecord, *Arg);
         }
       }

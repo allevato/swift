@@ -11,38 +11,45 @@
 //===----------------------------------------------------------------------===//
 //
 //  This file defines a data structure that stores a string-to-string
-//  mapping used to transform file paths based on a prefix mapping.
+//  mapping used to transform file paths based on a prefix mapping. It
+//  is optimized for the common case, which is that there will be
+//  extremely few mappings (i.e., one or two).
 //
-//  This data structure makes some assumptions about the mappings; for
-//  example, it is assumed that no source path is a strict prefix of any
-//  other source path. If this assumption is violated, the prefix used to
-//  remap the path is arbitrary.
+//  Remappings are stored such that they are applied in the order they
+//  are passed on the command line. This would only matter if one
+//  source mapping was a prefix of another.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SWIFT_BASIC_PATHREMAPPER_H
 #define SWIFT_BASIC_PATHREMAPPER_H
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 
-#include <map>
 #include <string>
+#include <utility>
 
 namespace swift {
 
 class PathRemapper {
 private:
-  std::map<std::string, std::string> PathPrefixMap;
+  SmallVector<std::pair<std::string, std::string>, 2> PathMappings;
 
 public:
+  /// Adds a mapping such that any paths starting with `FromPrefix` have that
+  /// portion replaced with `ToPrefix`.
   void addMapping(StringRef FromPrefix, StringRef ToPrefix) {
-    PathPrefixMap[FromPrefix] = ToPrefix;
+    PathMappings.emplace_back(FromPrefix, ToPrefix);
   }
 
+  /// Returns a remapped `Path` if it starts with a prefix in the map; otherwise
+  /// the original path is returned.
   std::string remapPath(StringRef Path) const {
-    for (const auto &Entry : PathPrefixMap)
-      if (Path.startswith(Entry.first))
-        return (Twine(Entry.second) + Path.substr(Entry.first.size())).str();
+    for (const auto &Mapping : PathMappings)
+      if (Path.startswith(Mapping.first))
+        return (Twine(Mapping.second) +
+                Path.substr(Mapping.first.size())).str();
     return Path.str();
   }
 };
