@@ -1404,8 +1404,9 @@ ImportedName NameImporter::importNameImpl(const clang::NamedDecl *D,
   case clang::DeclarationName::CXXOperatorName:
   case clang::DeclarationName::CXXUsingDirective:
   case clang::DeclarationName::CXXDeductionGuideName:
-    // Handling these is part of C++ interoperability.
-    llvm_unreachable("unhandled C++ interoperability");
+    // TODO: Handling these is part of C++ interoperability. Don't consider this
+    // unreachable; we just want to ignore them for now, not abort the compiler.
+    break;
 
   case clang::DeclarationName::Identifier:
     // Map the identifier.
