@@ -136,6 +136,11 @@ namespace swift {
     /// configuration options.
     bool EnableObjCInterop = true;
 
+    /// Enable C++ interop code generation and build configuration
+    /// options.
+    /// FIXME: Disabled by default until this is fully baked.
+    bool EnableCXXInterop = false;
+
     /// On Darwin platforms, use the pre-stable ABI's mark bit for Swift
     /// classes instead of the stable ABI's bit.
     bool UseDarwinPreStableABIBit = !bool(SWIFT_DARWIN_ENABLE_STABLE_ABI_BIT);

@@ -458,8 +458,12 @@ getNormalInvocationArguments(std::vector<std::string> &invocationArgStrs,
         "-Werror=non-modular-include-in-framework-module");
 
   if (LangOpts.EnableObjCInterop) {
-    invocationArgStrs.insert(invocationArgStrs.end(),
-                             {"-x", "objective-c", "-std=gnu11", "-fobjc-arc"});
+    invocationArgStrs.insert(invocationArgStrs.end(), {
+        "-x",
+        LangOpts.EnableCXXInterop ? "objective-c++" : "objective-c",
+        LangOpts.EnableCXXInterop ? "-std=gnu++17" : "-std=gnu11",
+        "-fobjc-arc"
+    });
     // TODO: Investigate whether 7.0 is a suitable default version.
     if (!triple.isOSDarwin())
       invocationArgStrs.insert(invocationArgStrs.end(),
@@ -478,7 +482,11 @@ getNormalInvocationArguments(std::vector<std::string> &invocationArgStrs,
       });
 
   } else {
-    invocationArgStrs.insert(invocationArgStrs.end(), {"-x", "c", "-std=gnu11"});
+    invocationArgStrs.insert(invocationArgStrs.end(), {
+        "-x",
+        LangOpts.EnableCXXInterop ? "c++" : "c",
+        LangOpts.EnableCXXInterop ? "-std=gnu++17" : "-std=gnu11"
+    });
   }
 
   // Set C language options.
