@@ -350,54 +350,63 @@ namespace {
 
     const clang::RecordDecl *getClangDecl() const { return ClangDecl; }
 
+    template <typename Gen>
+    void callSpecialFunction(Gen &&gen, IRGenFunction &IGF,
+                             Address addr) const {
+      llvm::Function *function = gen(
+          IGF.IGM.getClangCGM(), addr.getAlignment().asCharUnits(),
+          /*IsVolatile=*/ false,
+          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      addr = IGF.Builder.CreateBitCast(addr, IGF.IGM.Int8PtrPtrTy);
+      IGF.Builder.CreateCall(function, {addr.getAddress()});
+    }
+
+    template <typename Gen>
+    void callSpecialFunction(Gen &&gen, IRGenFunction &IGF, Address destAddr,
+                             Address srcAddr) const {
+      llvm::Function *function = gen(
+          IGF.IGM.getClangCGM(), destAddr.getAlignment().asCharUnits(),
+          srcAddr.getAlignment().asCharUnits(), /*IsVolatile=*/ false,
+          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      destAddr = IGF.Builder.CreateBitCast(destAddr, IGF.IGM.Int8PtrPtrTy);
+      srcAddr = IGF.Builder.CreateBitCast(srcAddr, IGF.IGM.Int8PtrPtrTy);
+      IGF.Builder.CreateCall(function,
+                             {destAddr.getAddress(), srcAddr.getAddress()});
+    }
+
   public:
     void initializeWithCopy(IRGenFunction &IGF, Address destAddr,
                             Address srcAddr, SILType T, bool isOutlined) const {
-      clang::CodeGen::callNonTrivialCStructCopyConstructor(
-          IGF.IGM.getClangCGM(),
-          IGF.Builder.GetInsertBlock(), IGF.Builder.GetInsertPoint(),
-          destAddr.getAddress(), destAddr.getAlignment().asCharUnits(),
-          srcAddr.getAddress(), srcAddr.getAlignment().asCharUnits(),
-          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      callSpecialFunction(
+          clang::CodeGen::getNonTrivialCStructCopyConstructor, IGF, destAddr,
+          srcAddr);
     }
 
     void initializeWithTake(IRGenFunction &IGF, Address destAddr,
                             Address srcAddr, SILType T, bool isOutlined) const {
-      clang::CodeGen::callNonTrivialCStructMoveConstructor(
-          IGF.IGM.getClangCGM(),
-          IGF.Builder.GetInsertBlock(), IGF.Builder.GetInsertPoint(),
-          destAddr.getAddress(), destAddr.getAlignment().asCharUnits(),
-          srcAddr.getAddress(), srcAddr.getAlignment().asCharUnits(),
-          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      callSpecialFunction(
+          clang::CodeGen::getNonTrivialCStructMoveConstructor, IGF, destAddr,
+          srcAddr);
     }
 
     void assignWithCopy(IRGenFunction &IGF, Address dest, Address src,
                         SILType T, bool isOutlined) const {
-      clang::CodeGen::callNonTrivialCStructCopyAssignmentOperator(
-          IGF.IGM.getClangCGM(),
-          IGF.Builder.GetInsertBlock(), IGF.Builder.GetInsertPoint(),
-          dest.getAddress(), dest.getAlignment().asCharUnits(),
-          src.getAddress(), src.getAlignment().asCharUnits(),
-          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      callSpecialFunction(
+          clang::CodeGen::getNonTrivialCStructCopyAssignmentOperator, IGF,
+          dest, src);
     }
 
     void assignWithTake(IRGenFunction &IGF, Address dest, Address src,
                         SILType T, bool isOutlined) const {
-      clang::CodeGen::callNonTrivialCStructMoveAssignmentOperator(
-          IGF.IGM.getClangCGM(),
-          IGF.Builder.GetInsertBlock(), IGF.Builder.GetInsertPoint(),
-          dest.getAddress(), dest.getAlignment().asCharUnits(),
-          src.getAddress(), src.getAlignment().asCharUnits(),
-          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      callSpecialFunction(
+          clang::CodeGen::getNonTrivialCStructMoveAssignmentOperator, IGF,
+          dest, src);
     }
 
     void destroy(IRGenFunction &IGF, Address address, SILType T,
                  bool isOutlined) const {
-      clang::CodeGen::callNonTrivialCStructDestructor(
-          IGF.IGM.getClangCGM(),
-          IGF.Builder.GetInsertBlock(), IGF.Builder.GetInsertPoint(),
-          address.getAddress(), address.getAlignment().asCharUnits(),
-          clang::QualType(ClangDecl->getTypeForDecl(), 0));
+      callSpecialFunction(clang::CodeGen::getNonTrivialCStructDestructor,
+          IGF, address);
     }
 
     llvm::NoneType getNonFixedOffsets(IRGenFunction &IGF) const {
