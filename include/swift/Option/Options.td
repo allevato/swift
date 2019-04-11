@@ -123,7 +123,7 @@ def driver_batch_size_limit : Separate<["-"], "driver-batch-size-limit">,
 
 def driver_force_response_files : Flag<["-"], "driver-force-response-files">,
   InternalDebugOpt,
-  HelpText<"Force the use of response files for testing">;
+  HelpText<"Force the use of response files in job invocations that support them">;
 
 def driver_always_rebuild_dependents :
   Flag<["-"], "driver-always-rebuild-dependents">, InternalDebugOpt,
