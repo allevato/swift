@@ -66,6 +66,12 @@ extern int autolink_extract_main(ArrayRef<const char *> Args, const char *Argv0,
 extern int modulewrap_main(ArrayRef<const char *> Args, const char *Argv0,
                            void *MainAddr);
 
+extern int generate_pcm_main(ArrayRef<const char *> Args, const char *Argv0,
+                             void *MainAddr);
+
+extern int pcm_info_main(ArrayRef<const char *> Args, const char *Argv0,
+                         void *MainAddr);
+
 /// Run 'swift-format'
 extern int swift_format_main(ArrayRef<const char *> Args, const char *Argv0,
                              void *MainAddr);
@@ -131,6 +137,16 @@ static int run_driver(StringRef ExecName,
       return modulewrap_main(llvm::makeArrayRef(argv.data()+2,
                                                 argv.data()+argv.size()),
                              argv[0], (void *)(intptr_t)getExecutablePath);
+    }
+    if (FirstArg == "-generate-pcm") {
+      return generate_pcm_main(llvm::makeArrayRef(argv.data()+2,
+                                                  argv.data()+argv.size()),
+                               argv[0], (void *)(intptr_t)getExecutablePath);
+    }
+    if (FirstArg == "-pcm-info") {
+      return pcm_info_main(llvm::makeArrayRef(argv.data()+2,
+                                              argv.data()+argv.size()),
+                           argv[0], (void *)(intptr_t)getExecutablePath);
     }
   }
 

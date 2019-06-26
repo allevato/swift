@@ -1,6 +1,7 @@
 add_swift_host_tool(swift
   driver.cpp
   autolink_extract_main.cpp
+  generate_pcm_main.cpp
   modulewrap_main.cpp
   swift_format_main.cpp
   SWIFT_COMPONENT compiler

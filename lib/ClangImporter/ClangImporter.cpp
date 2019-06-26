@@ -1496,6 +1496,88 @@ ClangImporter::emitBridgingPCH(StringRef headerPath,
   return false;
 }
 
+bool ClangImporter::emitPrecompiledModule(StringRef moduleMapPath,
+                                          StringRef outputPCMPath) {
+  auto invocation = std::make_shared<clang::CompilerInvocation>
+    (clang::CompilerInvocation(*Impl.Invocation));
+  invocation->getFrontendOpts().DisableFree = false;
+  invocation->getFrontendOpts().Inputs.clear();
+  invocation->getFrontendOpts().Inputs.push_back(
+      clang::FrontendInputFile(
+          moduleMapPath, clang::InputKind(
+              clang::InputKind::ObjC, clang::InputKind::ModuleMap, false)));
+  invocation->getFrontendOpts().OutputFile = outputPCMPath;
+  invocation->getFrontendOpts().ProgramAction = clang::frontend::GenerateModule;
+  invocation->getFrontendOpts().BuildingImplicitModule = false;
+  invocation->getLangOpts()->setCompilingModule(
+      clang::LangOptions::CMK_ModuleMap);
+  invocation->getPreprocessorOpts().resetNonModularOptions();
+
+  clang::CompilerInstance emitInstance(
+    Impl.Instance->getPCHContainerOperations());
+  emitInstance.setInvocation(std::move(invocation));
+  emitInstance.createDiagnostics(&Impl.Instance->getDiagnosticClient(),
+                                 /*ShouldOwnClient=*/false);
+
+  clang::FileManager &fileManager = Impl.Instance->getFileManager();
+  emitInstance.setFileManager(&fileManager);
+  emitInstance.createSourceManager(fileManager);
+  emitInstance.setTarget(&Impl.Instance->getTarget());
+
+  std::unique_ptr<clang::FrontendAction> action;
+  action.reset(new clang::GenerateModuleFromModuleMapAction());
+  if (!emitInstance.getFrontendOpts().IndexStorePath.empty()) {
+    action = clang::index::
+      createIndexDataRecordingAction(emitInstance.getFrontendOpts(),
+                                     std::move(action));
+  }
+  emitInstance.ExecuteAction(*action);
+  if (emitInstance.getDiagnostics().hasErrorOccurred()) {
+    Impl.SwiftContext.Diags.diagnose({},
+                                     diag::bridging_header_pch_error,
+                                     outputPCMPath, moduleMapPath);
+    return true;
+  }
+  return false;
+}
+
+bool ClangImporter::dumpPrecompiledModuleInfo(StringRef pcmPath) {
+  auto invocation = std::make_shared<clang::CompilerInvocation>
+    (clang::CompilerInvocation(*Impl.Invocation));
+  invocation->getFrontendOpts().DisableFree = false;
+  invocation->getFrontendOpts().Inputs.clear();
+  invocation->getFrontendOpts().Inputs.push_back(
+      clang::FrontendInputFile(
+          pcmPath, clang::InputKind(
+              clang::InputKind::C, clang::InputKind::Precompiled, false)));
+  invocation->getFrontendOpts().ProgramAction = clang::frontend::ModuleFileInfo;
+  invocation->getPreprocessorOpts().resetNonModularOptions();
+
+  clang::CompilerInstance dumpInstance(
+    Impl.Instance->getPCHContainerOperations(),
+    &Impl.Instance->getModuleCache());
+  dumpInstance.setInvocation(std::move(invocation));
+  dumpInstance.createDiagnostics(&Impl.Instance->getDiagnosticClient(),
+                                 /*ShouldOwnClient=*/false);
+
+  clang::FileManager &fileManager = Impl.Instance->getFileManager();
+  dumpInstance.setFileManager(&fileManager);
+  dumpInstance.createSourceManager(fileManager);
+  dumpInstance.setTarget(&Impl.Instance->getTarget());
+
+  std::unique_ptr<clang::FrontendAction> action;
+  action.reset(new clang::DumpModuleInfoAction());
+  dumpInstance.ExecuteAction(*action);
+
+  if (dumpInstance.getDiagnostics().hasErrorOccurred()) {
+    // Impl.SwiftContext.Diags.diagnose({},
+    //                                  diag::bridging_header_pch_error,
+    //                                  outputPCMPath, moduleMapPath);
+    return true;
+  }
+  return false;
+}
+
 void ClangImporter::collectVisibleTopLevelModuleNames(
     SmallVectorImpl<Identifier> &names) const {
   SmallVector<clang::Module *, 32> Modules;
