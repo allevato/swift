@@ -100,6 +100,20 @@ Optional<bool> forEachModuleSearchPath(
 
   return None;
 }
+
+/// Apply \p body for each directly requested module in \p Ctx until \p body
+/// returns a non-None value. Returns the return value from \p body, or \c None.
+Optional<bool> forEachDirectlyRequestedModule(
+    const ASTContext &Ctx,
+    llvm::function_ref<Optional<bool>(StringRef, StringRef)> callback) {
+  for (const auto &pair : Ctx.SearchPathOpts.DirectlyRequestedModules) {
+    if (auto result = callback(/*moduleName=*/pair.first,
+                               /*path=*/pair.second))
+      return result;
+  }
+
+  return None;
+}
 } // end unnamed namespace
 
 // Defined out-of-line so that we can see ~ModuleFile.
@@ -157,6 +171,27 @@ void SerializedModuleLoaderBase::collectVisibleTopLevelModuleNamesImpl(
     }
     return false;
   };
+
+  // Before checking seach paths, find directly requested modules.
+  forEachDirectlyRequestedModule(
+    Ctx,
+    [&](StringRef moduleName, StringRef path) {
+      auto pathExt = llvm::sys::path::extension(path);
+      if (pathExt != moduleSuffix && pathExt != suffix)
+        return None;
+
+      auto stat = fs.status(path);
+      if (!stat)
+        return None;
+      if (pathExt == moduleSuffix && stat->isDirectory()) {
+        if (!checkTargetFiles(path))
+          return None;
+      } else if (pathExt != suffix || stat->isDirectory()) {
+        return None;
+      }
+      names.push_back(Ctx.getIdentifier(moduleName));
+      return None;
+    });
 
   forEachModuleSearchPath(Ctx, [&](StringRef searchPath, SearchPathKind Kind,
                                    bool isSystem) {
@@ -472,6 +507,43 @@ SerializedModuleLoaderBase::findModule(AccessPathElem moduleID,
       return None;
     }
   };
+
+  // Before looking in search paths, check the map of directly requested
+  // modules.
+  auto directModuleIt =
+      Ctx.SearchPathOpts.DirectlyRequestedModules.find(moduleName.c_str());
+  if (directModuleIt != Ctx.SearchPathOpts.DirectlyRequestedModules.end()) {
+    auto path = directModuleIt->second;
+    currPath = path;
+
+    if (llvm::sys::path::filename(path) == fileNames.module) {
+      llvm::ErrorOr<llvm::vfs::Status> statResult = fs.status(path);
+      // Even if stat fails, we can't just return the error; the path
+      // we're looking for might not be "Foo.swiftmodule".
+      auto checkTargetSpecificModule =
+          statResult && statResult->isDirectory();
+
+      if (checkTargetSpecificModule) {
+        // A .swiftmodule directory contains architecture-specific files.
+        auto result = findTargetSpecificModuleFiles();
+        if (result.hasValue())
+          return result.getValue();
+      }
+
+      llvm::SmallString<256> moduleDocPath{path}, moduleSourceInfoPath{path};
+      llvm::sys::path::remove_filename(moduleDocPath);
+      llvm::sys::path::append(moduleDocPath, fileNames.moduleDoc);
+      llvm::sys::path::remove_filename(moduleSourceInfoPath);
+      llvm::sys::path::append(moduleSourceInfoPath, fileNames.moduleSourceInfo);
+
+      auto result = openModuleFiles(moduleID,
+                                    path, moduleDocPath, moduleSourceInfoPath,
+                                    moduleBuffer, moduleDocBuffer,
+                                    moduleSourceInfoBuffer);
+      if (!result)
+        return true;
+    }
+  }
 
   auto result = forEachModuleSearchPath(
       Ctx,

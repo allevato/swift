@@ -214,6 +214,11 @@ def I : JoinedOrSeparate<["-"], "I">, Flags<[FrontendOption, ArgumentIsPath]>,
 def I_EQ : Joined<["-"], "I=">, Flags<[FrontendOption, ArgumentIsPath]>,
   Alias<I>;
 
+def M : JoinedOrSeparate<["-"], "M">, Flags<[FrontendOption, ArgumentIsPath]>,
+  HelpText<"Add a .swiftmodule file to the set of importable modules">;
+def M_EQ : Joined<["-"], "M=">, Flags<[FrontendOption, ArgumentIsPath]>,
+  Alias<M>;
+
 def import_underlying_module : Flag<["-"], "import-underlying-module">,
   Flags<[FrontendOption, NoInteractiveOption]>,
   HelpText<"Implicitly imports the Objective-C half of a module">;

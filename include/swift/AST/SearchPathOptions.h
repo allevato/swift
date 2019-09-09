@@ -16,6 +16,7 @@
 #include "swift/Basic/ArrayRefView.h"
 #include "llvm/ADT/Hashing.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,14 @@ public:
   ///
   /// This is used in immediate modes. It is safe to add paths to this directly.
   std::vector<std::string> LibrarySearchPaths;
+
+  /// A mapping from module names to the paths to corresponding .swiftmodules
+  /// that should be found directly instead of looking in search paths.
+  ///
+  /// This is meant to be used by build systems that track individual files,
+  /// so that the compiler can find those modules faster than it would be
+  /// looking in potentially numerous search paths.
+  std::map<std::string, std::string> DirectlyRequestedModules;
 
   /// Path to search for compiler-relative header files.
   std::string RuntimeResourcePath;
@@ -110,6 +119,8 @@ public:
                                            frameworkPathsOnly.end()),
                         hash_combine_range(LibrarySearchPaths.begin(),
                                            LibrarySearchPaths.end()),
+                        hash_combine_range(DirectlyRequestedModules.begin(),
+                                           DirectlyRequestedModules.end()),
                         RuntimeResourcePath,
                         hash_combine_range(RuntimeLibraryImportPaths.begin(),
                                            RuntimeLibraryImportPaths.end()),

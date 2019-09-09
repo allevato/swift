@@ -1497,6 +1497,10 @@ ModuleFile::ModuleFile(
           ModuleInterfacePath = blobData;
           break;
         }
+        case input_block::DIRECTLY_REQUESTED_MODULE: {
+          DirectlyRequestedModules.push_back(blobData);
+          break;
+        }
         default:
           // Unknown input kind, possibly for use by a future version of the
           // module format.
@@ -1656,6 +1660,9 @@ Status ModuleFile::associateWithFileContext(FileUnit *file,
   for (const auto &searchPath : SearchPaths)
     ctx.addSearchPath(searchPath.Path, searchPath.IsFramework,
                       searchPath.IsSystem);
+
+  for (const auto &modulePath : DirectlyRequestedModules)
+    ctx.addDirectlyRequestedModule(modulePath);
 
   auto clangImporter = static_cast<ClangImporter *>(ctx.getClangModuleLoader());
 

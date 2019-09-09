@@ -170,6 +170,13 @@ private:
   /// modules.
   std::vector<SearchPath> SearchPaths;
 
+  /// Paths corresponding to directly requested module files that the module may
+  /// import, which are checked before any other search paths.
+  ///
+  /// This is not intended for use by frameworks, but may show up in debug
+  /// modules.
+  std::vector<std::string> DirectlyRequestedModules;
+
   /// Info for the (lone) imported header for this module.
   struct {
     off_t fileSize;

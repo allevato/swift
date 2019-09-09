@@ -1433,6 +1433,14 @@ void ASTContext::addSearchPath(StringRef searchPath, bool isFramework,
     clangLoader->addSearchPath(searchPath, isFramework, isSystem);
 }
 
+void ASTContext::addDirectlyRequestedModule(StringRef modulePath) {
+  auto filename = llvm::sys::path::filename(modulePath);
+  llvm::SmallString<256> moduleName{filename};
+  llvm::sys::path::replace_extension(moduleName, "");
+
+  SearchPathOpts.DirectlyRequestedModules[moduleName.str()] = modulePath;
+}
+
 void ASTContext::addModuleLoader(std::unique_ptr<ModuleLoader> loader,
                                  bool IsClang, bool IsDwarf) {
   if (IsClang && !IsDwarf && !getImpl().TheClangModuleLoader)

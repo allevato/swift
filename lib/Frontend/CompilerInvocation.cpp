@@ -601,6 +601,20 @@ static bool ParseClangImporterArgs(ClangImporterOptions &Opts,
   return false;
 }
 
+static void addDirectlyRequestedModule(SearchPathOptions &Opts,
+                                       StringRef path) {
+  auto filename = llvm::sys::path::filename(path);
+  llvm::SmallString<256> moduleName{filename};
+  llvm::sys::path::replace_extension(moduleName, "");
+
+  // If the same module is listed more than once on the command line, the later
+  // ones will silently override the earlier ones. This is the same behavior
+  // that would occur with regular search paths.
+  // TODO: Should we emit a diagnostic here? Search paths containing the same
+  // module don't, but this flag is a bit more explicit than that.
+  Opts.DirectlyRequestedModules[moduleName.str()] = path.str();
+}
+
 static bool ParseSearchPathArgs(SearchPathOptions &Opts,
                                 ArgList &Args,
                                 DiagnosticEngine &Diags,
@@ -632,6 +646,10 @@ static bool ParseSearchPathArgs(SearchPathOptions &Opts,
 
   for (const Arg *A : Args.filtered(OPT_vfsoverlay)) {
     Opts.VFSOverlayFiles.push_back(resolveSearchPath(A->getValue()));
+  }
+
+  for (const Arg *A : Args.filtered(OPT_M)) {
+    addDirectlyRequestedModule(Opts, resolveSearchPath(A->getValue()));
   }
 
   if (const Arg *A = Args.getLastArg(OPT_sdk))

@@ -625,6 +625,9 @@ public:
   /// Does any proper bookkeeping to keep all module loaders up to date as well.
   void addSearchPath(StringRef searchPath, bool isFramework, bool isSystem);
 
+  /// Adds a directly requested module dependency to SearchPathOpts.
+  void addDirectlyRequestedModule(StringRef modulePath);
+
   /// Adds a module loader to this AST context.
   ///
   /// \param loader The new module loader, which will be added after any

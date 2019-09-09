@@ -721,6 +721,7 @@ void Serializer::writeBlockInfoBlock() {
   BLOCK_RECORD(input_block, FILE_DEPENDENCY);
   BLOCK_RECORD(input_block, DEPENDENCY_DIRECTORY);
   BLOCK_RECORD(input_block, MODULE_INTERFACE_PATH);
+  BLOCK_RECORD(input_block, DIRECTLY_REQUESTED_MODULE);
 
   BLOCK(DECLS_AND_TYPES_BLOCK);
 #define RECORD(X) BLOCK_RECORD(decls_block, X);
@@ -943,6 +944,7 @@ void Serializer::writeInputBlock(const SerializationOptions &options) {
   input_block::FileDependencyLayout FileDependency(Out);
   input_block::DependencyDirectoryLayout DependencyDirectory(Out);
   input_block::ModuleInterfaceLayout ModuleInterface(Out);
+  input_block::DirectlyRequestedModuleLayout DirectlyRequestedModule(Out);
 
   if (options.SerializeOptionsForDebugging) {
     const SearchPathOptions &searchPathOpts = M->getASTContext().SearchPathOpts;
@@ -953,6 +955,9 @@ void Serializer::writeInputBlock(const SerializationOptions &options) {
                       framepath.Path);
     for (auto &path : searchPathOpts.ImportSearchPaths)
       SearchPath.emit(ScratchRecord, /*framework=*/false, /*system=*/false, path);
+
+    for (auto &moduleNameAndPath : searchPathOpts.DirectlyRequestedModules)
+      DirectlyRequestedModule.emit(ScratchRecord, moduleNameAndPath.second);
   }
 
   // Note: We're not using StringMap here because we don't need to own the
