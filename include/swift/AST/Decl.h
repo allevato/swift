@@ -1205,6 +1205,7 @@ class ImportDecl final : public Decl,
   /// case module aliasing is used. For example if '-module-alias Foo=Bar' was
   /// passed and this decl is 'import Foo', the real name 'Bar' will be stored.
   Identifier RealModuleName;
+  StringRef Origin;
 
   /// The resolved module.
   ModuleDecl *Mod = nullptr;
@@ -1284,6 +1285,9 @@ public:
   ImportPath::Module getRealModulePath(ImportPath::Builder &scratch) const {
     return getRealImportPath(scratch).getModulePath(getImportKind());
   }
+
+  StringRef getOrigin() const { return Origin; }
+  void setOrigin(StringRef o) { Origin = o; }
 
   ImportPath::Access getAccessPath() const {
     return getImportPath().getAccessPath(getImportKind());

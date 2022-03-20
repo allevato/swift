@@ -5220,7 +5220,7 @@ Parser::parseDeclListDelayed(IterableDeclContext *IDC) {
 ///
 /// \verbatim
 ///   decl-import:
-///     'import' attribute-list import-kind? import-path
+///     'import' attribute-list import-kind? import-path import-origin?
 ///   import-kind:
 ///     'typealias'
 ///     'struct'
@@ -5231,6 +5231,8 @@ Parser::parseDeclListDelayed(IterableDeclContext *IDC) {
 ///     'func'
 ///   import-path:
 ///     any-identifier ('.' any-identifier)*
+///   import-origin:
+///     'from' string-literal
 /// \endverbatim
 ParserResult<ImportDecl> Parser::parseDeclImport(ParseDeclOptions Flags,
                                                  DeclAttributes &Attributes) {
@@ -5323,6 +5325,18 @@ ParserResult<ImportDecl> Parser::parseDeclImport(ParseDeclOptions Flags,
     return nullptr;
   }
 
+  StringRef Origin;
+  if (Tok.isContextualKeyword("from")) {
+    consumeToken();
+    if (!Tok.is(tok::string_literal)) {
+      //diagnose()
+      auto originLiteral = parseExprStringLiteral();
+      auto originExpr = originLiteral.get();
+      Origin = cast<StringLiteralExpr>(originExpr)->getValue();
+    }
+    consumeToken();
+  }
+
   // Look up if the imported module is being aliased via -module-alias,
   // and check that the module alias appeared in source files instead of
   // its corresponding real name
@@ -5340,6 +5354,7 @@ ParserResult<ImportDecl> Parser::parseDeclImport(ParseDeclOptions Flags,
   auto *ID = ImportDecl::create(Context, CurDeclContext, ImportLoc, Kind,
                                 KindLoc, importPath.get());
   ID->getAttrs() = Attributes;
+  ID->setOrigin(Origin);
   return DCC.fixupParserResult(ID);
 }
 
