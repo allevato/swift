@@ -28,6 +28,7 @@ target_link_libraries(swiftFrontend PRIVATE
   swiftSema
   swiftSerialization
   swiftTBDGen
-  swiftAPIDigester)
+  swiftAPIDigester
+  swiftIndex)
 
 set_swift_llvm_is_available(swiftFrontend)

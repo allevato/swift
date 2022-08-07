@@ -22,6 +22,7 @@
 #include "swift/Basic/Defer.h"
 #include "swift/Frontend/Frontend.h"
 #include "swift/Frontend/ModuleInterfaceSupport.h"
+#include "swift/Index/IndexRecord.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/Serialization/SerializationOptions.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -179,6 +180,24 @@ struct ErrorDowngradeConsumerRAII: DiagnosticConsumer {
   }
 };
 
+static void emitIndexData(StringRef moduleOutputPath,
+                          const CompilerInvocation &invocation,
+                          const CompilerInstance &instance) {
+  const FrontendOptions &opts = invocation.getFrontendOptions();
+  (void) index::indexAndRecord(instance.getMainModule(),
+                                opts.InputsAndOutputs
+                                  .copyIndexUnitOutputFilenames(),
+                                moduleOutputPath, opts.IndexStorePath,
+                                !opts.IndexIgnoreClangModules,
+                                opts.IndexSystemModules,
+                                opts.IndexIgnoreStdlib,
+                                opts.IndexIncludeLocals,
+                                /*isDebugCompilation=*/ false,
+                                invocation.getTargetTriple(),
+                                *instance.getDependencyTracker(),
+                                invocation.getIRGenOptions().FilePrefixMap);
+}
+
 bool ModuleInterfaceBuilder::buildSwiftModuleInternal(
     StringRef OutPath,
     bool ShouldSerializeDeps,
@@ -312,6 +331,8 @@ bool ModuleInterfaceBuilder::buildSwiftModuleInternal(
       LLVM_DEBUG(llvm::dbgs() << "encountered errors\n");
       return std::make_error_code(std::errc::not_supported);
     }
+    emitIndexData(OutPath, subInvocation, SubInstance);
+
     if (SubInstance.getDiags().hadAnyError()) {
       return std::make_error_code(std::errc::not_supported);
     }

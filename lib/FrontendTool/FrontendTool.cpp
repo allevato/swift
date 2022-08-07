@@ -875,7 +875,7 @@ static void emitIndexDataForSourceFile(SourceFile *PrimarySourceFile,
                                        const CompilerInstance &Instance);
 
 /// Emits index data for all primary inputs, or the main module.
-static void emitIndexData(const CompilerInstance &Instance) {
+void emitIndexData(const CompilerInstance &Instance) {
   if (Instance.getPrimarySourceFiles().empty()) {
     emitIndexDataForSourceFile(nullptr, Instance);
   } else {

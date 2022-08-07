@@ -1664,7 +1664,7 @@ InterfaceSubContextDelegateImpl::runInSubCompilerInstance(StringRef moduleName,
 
   // Configure the outputs in front-end options. There must be an equal number of
   // inputs and outputs.
-  std::vector<std::string> outputFiles{"/<unused>"};
+  std::vector<std::string> outputFiles{outputPath.str()};
   std::vector<SupplementaryOutputPaths> ModuleOutputPaths;
   ModuleOutputPaths.emplace_back();
   if (subInvocation.getFrontendOptions().RequestedAction ==
