@@ -198,6 +198,7 @@ CodeCompletionDeclKind
 ContextFreeCodeCompletionResult::getCodeCompletionDeclKind(const Decl *D) {
   switch (D->getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::Extension:
   case DeclKind::PatternBinding:
   case DeclKind::EnumCase:

@@ -152,6 +152,7 @@ DescriptiveDeclKind Decl::getDescriptiveKind() const {
 
   switch (getKind()) {
   TRIVIAL_KIND(Import);
+  TRIVIAL_KIND(FencedCodeBlock);
   TRIVIAL_KIND(Extension);
   TRIVIAL_KIND(EnumCase);
   TRIVIAL_KIND(TopLevelCode);
@@ -293,6 +294,7 @@ StringRef Decl::getDescriptiveKindName(DescriptiveDeclKind K) {
 #define ENTRY(Kind, String) case DescriptiveDeclKind::Kind: return String
   switch (K) {
   ENTRY(Import, "import");
+  ENTRY(FencedCodeBlock, "fenced code block");
   ENTRY(Extension, "extension");
   ENTRY(EnumCase, "case");
   ENTRY(TopLevelCode, "top-level code");
@@ -1120,6 +1122,16 @@ SourceRange GenericContext::getGenericTrailingWhereClauseSourceRange() const {
   return SourceRange();
 }
 
+FencedCodeBlockDecl *FencedCodeBlockDecl::create(ASTContext &Ctx,
+                                                 DeclContext *DC,
+                                                 SourceLoc LiteralLoc,
+                                                 StringRef Content) {
+  void *ptr = allocateMemoryForDecl<FencedCodeBlockDecl>(
+      Ctx, sizeof(FencedCodeBlockDecl), false);
+  auto D = new (ptr) FencedCodeBlockDecl(DC, LiteralLoc, Content);
+  return D;
+}
+
 ImportDecl *ImportDecl::create(ASTContext &Ctx, DeclContext *DC,
                                SourceLoc ImportLoc, ImportKind Kind,
                                SourceLoc KindLoc,
@@ -1156,6 +1168,7 @@ ImportDecl::ImportDecl(DeclContext *DC, SourceLoc ImportLoc, ImportKind K,
 ImportKind ImportDecl::getBestImportKind(const ValueDecl *VD) {
   switch (VD->getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::Extension:
   case DeclKind::PatternBinding:
   case DeclKind::TopLevelCode:
@@ -2589,6 +2602,7 @@ bool ValueDecl::isInstanceMember() const {
 
   switch (getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::Extension:
   case DeclKind::PatternBinding:
   case DeclKind::EnumCase:

@@ -3399,6 +3399,7 @@ static Optional<MemberIsolationPropagation> getMemberIsolationPropagation(
 
   switch (value->getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::Extension:
   case DeclKind::TopLevelCode:
   case DeclKind::InfixOperator:
@@ -5021,6 +5022,7 @@ static bool isNonValueReference(const ValueDecl *value) {
   case DeclKind::PrefixOperator:
   case DeclKind::TopLevelCode:
   case DeclKind::Destructor:
+  case DeclKind::FencedCodeBlock:
     return true;
 
   case DeclKind::EnumElement:

@@ -2438,6 +2438,7 @@ void IRGenModule::emitGlobalDecl(Decl *D) {
   case DeclKind::AssociatedType:
   case DeclKind::IfConfig: 
   case DeclKind::PoundDiagnostic:
+  case DeclKind::FencedCodeBlock:
     return;
 
   case DeclKind::Enum:
@@ -5201,6 +5202,7 @@ void IRGenModule::emitNestedTypeDecls(DeclRange members) {
   for (Decl *member : members) {
     switch (member->getKind()) {
     case DeclKind::Import:
+    case DeclKind::FencedCodeBlock:
     case DeclKind::TopLevelCode:
     case DeclKind::Protocol:
     case DeclKind::Extension:

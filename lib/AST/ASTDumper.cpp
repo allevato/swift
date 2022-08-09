@@ -517,6 +517,10 @@ namespace {
     }
 
   public:
+    void visitFencedCodeBlockDecl(FencedCodeBlockDecl *FCBD) {
+      // TODO implement
+    }
+
     void visitImportDecl(ImportDecl *ID) {
       printCommon(ID, "import_decl");
 

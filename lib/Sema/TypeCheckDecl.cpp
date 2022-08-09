@@ -2244,6 +2244,7 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
 
   switch (D->getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::Extension:
   case DeclKind::PatternBinding:
   case DeclKind::EnumCase:

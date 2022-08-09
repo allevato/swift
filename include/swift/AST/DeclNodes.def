@@ -184,6 +184,7 @@ DECL(PrecedenceGroup, Decl)
 DECL(MissingMember, Decl)
 DECL(PatternBinding, Decl)
 DECL(EnumCase, Decl)
+DECL(FencedCodeBlock, Decl)
 
 ABSTRACT_DECL(Operator, Decl)
   OPERATOR_DECL(InfixOperator, OperatorDecl)

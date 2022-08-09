@@ -361,6 +361,12 @@ public:
                             bool trackParsedSymbols = false,
                             bool implicitImport = false);
 
+  /// TBD.
+  bool importInlineCFragments(ArrayRef<StringRef> fragments,
+                              ModuleDecl *adapter,
+                              SourceLoc diagLoc = {},
+                              bool trackParsedSymbols = false);
+
   /// Returns the module that contains imports and declarations from all loaded
   /// Objective-C header files.
   ///

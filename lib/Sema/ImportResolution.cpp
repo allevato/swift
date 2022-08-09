@@ -474,12 +474,39 @@ ModuleImplicitImportsRequest::evaluate(Evaluator &evaluator,
   auto *clangImporter =
       static_cast<ClangImporter *>(ctx.getClangModuleLoader());
 
+  bool needsCHeaderModule = false;
+
+  // Implicitly import inlined C code.
+  SmallVector<Decl *, 4> topLevelDecls;
+  module->getTopLevelDecls(topLevelDecls);
+
+  SmallVector<StringRef, 4> fragments;
+  for (Decl *decl : topLevelDecls) {
+    if (FencedCodeBlockDecl *fencedDecl = dyn_cast<FencedCodeBlockDecl>(decl)) {
+      StringRef content = fencedDecl->getContent().drop_front(3).drop_back(3).trim();
+      StringRef languageID = content.take_until([](char ch) { return ch == '\n'; });
+
+      if (languageID == "c" || languageID == "objectivec" || languageID == "cpp") {
+        StringRef code = content.substr(languageID.size() + 1);
+        fragments.push_back(code);
+        if (!fragments.empty() &&
+            !clangImporter->importInlineCFragments(fragments, module)) {
+          needsCHeaderModule = true;
+        }
+      }
+    }
+  }
+
   // Implicitly import the bridging header module if needed.
   auto bridgingHeaderPath = importInfo.BridgingHeaderPath;
   if (!bridgingHeaderPath.empty() &&
       !clangImporter->importBridgingHeader(bridgingHeaderPath, module)) {
+    needsCHeaderModule = true;
+  }
+
+  if (needsCHeaderModule) {
     auto *headerModule = clangImporter->getImportedHeaderModule();
-    assert(headerModule && "Didn't load bridging header?");
+    assert(headerModule && "Didn't load bridging header or inline C code?");
     imports.emplace_back(
         ImportedModule(headerModule), SourceLoc(), ImportFlags::Exported);
   }

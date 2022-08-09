@@ -1047,6 +1047,7 @@ static bool isValidProtocolMemberForTBDGen(const Decl *D) {
   case DeclKind::Extension:
   case DeclKind::TopLevelCode:
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::PrecedenceGroup:
   case DeclKind::MissingMember:
   case DeclKind::EnumCase:

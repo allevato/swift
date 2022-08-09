@@ -1753,6 +1753,7 @@ Serializer::addConformanceRefs(ArrayRef<ProtocolConformance*> conformances) {
 static bool shouldSerializeMember(Decl *D) {
   switch (D->getKind()) {
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::InfixOperator:
   case DeclKind::PrefixOperator:
   case DeclKind::PostfixOperator:
@@ -4208,6 +4209,11 @@ public:
 
   void visitImportDecl(const ImportDecl *) {
     llvm_unreachable("import decls should not be serialized");
+  }
+
+  void visitFencedCodeBlockDecl(const FencedCodeBlockDecl *) {
+    // FIXME?
+    llvm_unreachable("fenced code block decls should not be serialized");
   }
 
   void visitIfConfigDecl(const IfConfigDecl *) {

@@ -384,6 +384,10 @@ ParserStatus Parser::parseBraceItems(SmallVectorImpl<ASTNode> &Entries,
       ParserStatus Status = parseLineDirective(false);
       BraceItemsStatus |= Status;
       NeedParseErrorRecovery = Status.isErrorOrHasCompletion();
+    } else if (isStartOfFencedCodeBlock()) {
+      ParserStatus Status = parseFencedCodeBlock();
+      BraceItemsStatus |= Status;
+      NeedParseErrorRecovery = Status.isErrorOrHasCompletion();
     } else if (isStartOfSwiftDecl()) {
       SmallVector<Decl*, 8> TmpDecls;
       ParserResult<Decl> DeclResult = 

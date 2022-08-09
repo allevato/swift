@@ -234,6 +234,7 @@ SymbolInfo index::getSymbolInfoForDecl(const Decl *D) {
     // These all reflect some sort of uninteresting syntactic structure
     // and don't merit indexing.
     case DeclKind::Import:
+    case DeclKind::FencedCodeBlock:
     case DeclKind::PatternBinding:
     case DeclKind::EnumCase:
     case DeclKind::TopLevelCode:

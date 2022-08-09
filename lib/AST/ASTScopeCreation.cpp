@@ -265,6 +265,7 @@ public:
   }
 
   VISIT_AND_IGNORE(ImportDecl)
+  VISIT_AND_IGNORE(FencedCodeBlockDecl)
   VISIT_AND_IGNORE(EnumCaseDecl)
   VISIT_AND_IGNORE(PrecedenceGroupDecl)
   VISIT_AND_IGNORE(InfixOperatorDecl)

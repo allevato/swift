@@ -447,6 +447,7 @@ public:
   UNREACHABLE(Param, "does not have access control")
   UNREACHABLE(GenericTypeParam, "does not have access control")
   UNREACHABLE(MissingMember, "does not have access control")
+  UNREACHABLE(FencedCodeBlock, "does not have access control")
 #undef UNREACHABLE
 
 #define UNINTERESTING(KIND) \
@@ -1067,6 +1068,7 @@ public:
   UNREACHABLE(Param, "does not have access control")
   UNREACHABLE(GenericTypeParam, "does not have access control")
   UNREACHABLE(MissingMember, "does not have access control")
+  UNREACHABLE(FencedCodeBlock, "does not have access control")
 #undef UNREACHABLE
 
 #define UNINTERESTING(KIND) \
@@ -1647,6 +1649,7 @@ public:
     llvm_unreachable(REASON); \
   }
   UNREACHABLE(Import, "not applicable")
+  UNREACHABLE(FencedCodeBlock, "not applicable")
   UNREACHABLE(TopLevelCode, "not applicable")
   UNREACHABLE(Module, "not applicable")
 

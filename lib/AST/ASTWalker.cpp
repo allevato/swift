@@ -151,6 +151,10 @@ class Traversal : public ASTVisitor<Traversal, Expr*, Stmt*,
     return false;
   }
 
+  bool visitFencedCodeBlockDecl(FencedCodeBlockDecl *FCBD) {
+    return false;
+  }
+
   bool visitExtensionDecl(ExtensionDecl *ED) {
     if (auto *typeRepr = ED->getExtendedTypeRepr())
       if (doIt(typeRepr))

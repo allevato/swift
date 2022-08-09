@@ -206,6 +206,7 @@ StringRef DependencyKey::Builder::getTopLevelName(const Decl *decl) {
     return cast<ValueDecl>(decl)->getBaseName().userFacingName();
 
   case DeclKind::Import:
+  case DeclKind::FencedCodeBlock:
   case DeclKind::PatternBinding:
   case DeclKind::EnumCase:
   case DeclKind::TopLevelCode:

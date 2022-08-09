@@ -1306,13 +1306,14 @@ static bool delimiterMatches(unsigned CustomDelimiterLen, const char *&BytesPtr,
 static bool advanceIfMultilineDelimiter(unsigned CustomDelimiterLen,
                                         const char *&CurPtr,
                                         DiagnosticEngine *Diags,
-                                        bool IsOpening = false) {
+                                        bool IsOpening = false,
+                                        char Character = '"') {
 
   // Test for single-line string literals that resemble multiline delimiter.
   const char *TmpPtr = CurPtr + 1;
   if (IsOpening && CustomDelimiterLen) {
     while (*TmpPtr != '\r' && *TmpPtr != '\n') {
-      if (*TmpPtr == '"') {
+      if (*TmpPtr == Character) {
         if (delimiterMatches(CustomDelimiterLen, ++TmpPtr, nullptr)) {
           return false;
         }
@@ -1323,9 +1324,9 @@ static bool advanceIfMultilineDelimiter(unsigned CustomDelimiterLen,
   }
 
   TmpPtr = CurPtr;
-  if (*(TmpPtr - 1) == '"' &&
-      diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags) &&
-      diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags)) {
+  if (*(TmpPtr - 1) == Character &&
+      diagnoseZeroWidthMatchAndAdvance(Character, TmpPtr, Diags) &&
+      diagnoseZeroWidthMatchAndAdvance(Character, TmpPtr, Diags)) {
     CurPtr = TmpPtr;
     return true;
   }
@@ -2215,6 +2216,17 @@ bool Lexer::tryLexRegexLiteral(const char *TokStart) {
   return true;
 }
 
+void Lexer::formFencedCodeBlockToken(const char *TokStart) {
+  while (true) {
+    if (*CurPtr == '`' && advanceIfMultilineDelimiter(
+        0, CurPtr, getTokenDiags(), /*IsOpening=*/ false, '`')) {
+      formToken(tok::fenced_code_literal, TokStart);
+      return;
+    }
+    ++CurPtr;
+  }
+}
+
 /// lexEscapedIdentifier:
 ///   identifier ::= '`' identifier '`'
 ///
@@ -2223,6 +2235,12 @@ void Lexer::lexEscapedIdentifier() {
   assert(CurPtr[-1] == '`' && "Unexpected start of escaped identifier");
   
   const char *Quote = CurPtr-1;
+
+  if (advanceIfMultilineDelimiter(
+      0, CurPtr, getTokenDiags(), /*IsOpening=*/ true, '`')) {
+    formFencedCodeBlockToken(Quote);
+    return;
+  }
 
   // Check whether we have an identifier followed by another backtick, in which
   // case this is an escaped identifier.

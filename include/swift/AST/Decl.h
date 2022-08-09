@@ -188,7 +188,8 @@ enum class DescriptiveDeclKind : uint8_t {
   MissingMember,
   Requirement,
   OpaqueResultType,
-  OpaqueVarType
+  OpaqueVarType,
+  FencedCodeBlock,
 };
 
 /// Describes which spelling was used in the source for the 'static' or 'class'
@@ -1170,6 +1171,35 @@ public:
 };
 static_assert(sizeof(_GenericContext) + sizeof(DeclContext) ==
               sizeof(GenericContext), "Please add fields to _GenericContext");
+
+class FencedCodeBlockDecl final : public Decl {
+  FencedCodeBlockDecl(DeclContext *DC, SourceLoc LiteralLoc, StringRef Content)
+      : Decl(DeclKind::FencedCodeBlock, DC), LiteralLoc(LiteralLoc),
+        Content(Content) {}
+
+  SourceLoc LiteralLoc;
+
+  StringRef Content;
+
+public:
+  static FencedCodeBlockDecl *create(ASTContext &C, DeclContext *DC,
+                                     SourceLoc LiteralLoc, StringRef Content);
+
+  SourceLoc getLiteralLoc() const { return LiteralLoc; }
+
+  StringRef getContent() const { return Content; }
+
+  SourceLoc getLocFromSource() const {
+    return getSourceRange().Start;
+  }
+  SourceRange getSourceRange() const {
+    return SourceRange(LiteralLoc, LiteralLoc.getAdvancedLoc(Content.size()));
+  }
+
+  static bool classof(const Decl *D) {
+    return D->getKind() == DeclKind::FencedCodeBlock;
+  }
+};
 
 /// ImportDecl - This represents a single import declaration, e.g.:
 ///   import Swift

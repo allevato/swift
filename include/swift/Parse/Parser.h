@@ -950,6 +950,9 @@ public:
   /// Returns true if the parser is at the start of a SIL decl.
   bool isStartOfSILDecl();
 
+  ///
+  bool isStartOfFencedCodeBlock();
+
   /// Parse the top-level Swift decls into the provided vector.
   void parseTopLevel(SmallVectorImpl<Decl *> &decls);
 
@@ -983,6 +986,8 @@ public:
   ParserResult<Decl> parseDecl(ParseDeclOptions Flags,
                                bool IsAtStartOfLineOrPreviousHadSemi,
                                llvm::function_ref<void(Decl*)> Handler);
+
+  ParserResult<FencedCodeBlockDecl> parseFencedCodeBlock();
 
   std::pair<std::vector<Decl *>, Optional<Fingerprint>>
   parseDeclListDelayed(IterableDeclContext *IDC);

@@ -2495,6 +2495,11 @@ void PrintAST::visitImportDecl(ImportDecl *decl) {
                    [&] { Printer << "."; });
 }
 
+void PrintAST::visitFencedCodeBlockDecl(FencedCodeBlockDecl *decl) {
+  printAttributes(decl);
+  Printer << decl->getContent() << "\n";
+}
+
 void PrintAST::printExtendedTypeName(TypeLoc ExtendedTypeLoc) {
   bool OldFullyQualifiedTypesIfAmbiguous =
     Options.FullyQualifiedTypesIfAmbiguous;

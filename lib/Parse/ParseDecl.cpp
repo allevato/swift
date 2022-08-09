@@ -4230,6 +4230,7 @@ bool swift::isKeywordPossibleDeclStart(const Token &Tok) {
   case tok::pound_error:
   case tok::identifier:
   case tok::pound_sourceLocation:
+  case tok::fenced_code_literal:
     return true;
   case tok::pound_line:
     // #line at the start of the line is a directive, but it's deprecated.
@@ -4413,6 +4414,29 @@ bool Parser::isStartOfSwiftDecl() {
   return isStartOfSwiftDecl();
 }
 
+bool Parser::isStartOfFencedCodeBlock() {
+  const Token &Tok = peekToken();
+  return Tok.is(tok::fenced_code_literal);
+}
+
+ParserResult<FencedCodeBlockDecl> Parser::parseFencedCodeBlock() {
+  DebuggerContextChange DCC (*this);
+
+  ParserPosition BeginParserPosition;
+  if (isCodeCompletionFirstPass())
+    BeginParserPosition = getParserPosition();
+
+  if (Tok.is(tok::fenced_code_literal)) {
+    StringRef Content = Tok.getText();
+    SourceLoc ContentLoc = consumeToken(tok::fenced_code_literal);
+    auto *FCBD = FencedCodeBlockDecl::create(Context, CurDeclContext, ContentLoc, Content);
+    //FCBD->getAttrs() = Attributes;
+    return DCC.fixupParserResult(FCBD);
+  }
+
+  return makeParserError();
+}
+
 bool Parser::isStartOfSILDecl() {
   switch (Tok.getKind()) {
   case tok::kw_sil:
@@ -4517,6 +4541,7 @@ setOriginalDeclarationForDifferentiableAttributes(DeclAttributes attrs,
 ///     decl-struct
 ///     decl-import
 ///     decl-operator
+///     decl-fenced-code-block
 /// \endverbatim
 ParserResult<Decl>
 Parser::parseDecl(ParseDeclOptions Flags,
@@ -4631,6 +4656,10 @@ Parser::parseDecl(ParseDeclOptions Flags,
   };
 
   switch (Tok.getKind()) {
+  case tok::fenced_code_literal:
+    // DeclParsingContext.setCreateSyntax(SyntaxKind::FencedCodeBlockDecl);
+    DeclResult = parseFencedCodeBlock();
+    break;
   case tok::kw_import:
     DeclParsingContext.setCreateSyntax(SyntaxKind::ImportDecl);
     DeclResult = parseDeclImport(Flags, Attributes);

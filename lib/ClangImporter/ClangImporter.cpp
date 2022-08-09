@@ -1091,7 +1091,7 @@ ClangImporter::create(ASTContext &ctx,
   {
     // Create an almost-empty memory buffer.
     auto sourceBuffer = llvm::MemoryBuffer::getMemBuffer(
-      "extern int __swift __attribute__((unavailable));",
+      "extern int __swift __attribute__((unavailable));\n",
       Implementation::moduleImportBufferName);
     clang::PreprocessorOptions &ppOpts =
         importer->Impl.Invocation->getPreprocessorOpts();
@@ -1483,6 +1483,26 @@ bool ClangImporter::importHeader(StringRef header, ModuleDecl *adapter,
   };
   return Impl.importHeader(adapter, header, diagLoc, /*trackParsedSymbols=*/false,
                            std::move(sourceBuffer), true);
+}
+
+bool ClangImporter::importInlineCFragments(ArrayRef<StringRef> fragments,
+                                           ModuleDecl *adapter,
+                                           SourceLoc diagLoc,
+                                           bool trackParsedSymbols) {
+  for (StringRef fragment : fragments) {
+    std::unique_ptr<llvm::MemoryBuffer> sourceBuffer{
+      llvm::MemoryBuffer::getMemBufferCopy(
+        fragment, "<inline C>")
+    };
+
+    if (Impl.importHeader(adapter, "<inline C>", diagLoc, trackParsedSymbols,
+                          std::move(sourceBuffer), /*implicitImport=*/ true)) {
+      llvm::errs() << "Oh no an error\n";
+      return true;
+    }
+  }
+
+  return false;
 }
 
 bool ClangImporter::importBridgingHeader(StringRef header, ModuleDecl *adapter,

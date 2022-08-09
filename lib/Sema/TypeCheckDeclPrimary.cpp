@@ -1834,6 +1834,9 @@ public:
     llvm_unreachable("cannot reach here");
   }
   
+  void visitFencedCodeBlockDecl(FencedCodeBlockDecl *FCBD) {
+  }
+
   void visitImportDecl(ImportDecl *ID) {
     TypeChecker::checkDeclAttributes(ID);
 

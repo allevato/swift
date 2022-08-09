@@ -266,6 +266,7 @@ public:
   // These are either not allowed at global scope or don't require
   // code emission.
   void visitImportDecl(ImportDecl *d) {}
+  void visitFencedCodeBlockDecl(FencedCodeBlockDecl *d) {}
   void visitEnumCaseDecl(EnumCaseDecl *d) {}
   void visitEnumElementDecl(EnumElementDecl *d) {}
   void visitOperatorDecl(OperatorDecl *d) {}
