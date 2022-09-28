@@ -38,6 +38,7 @@ private:
   bool computeFallbackModuleName();
   bool computeModuleName();
   bool computeModuleAliases();
+  bool computeModuleOrigins();
   bool computeMainAndSupplementaryOutputFilenames();
   void computeDumpScopeMapLocations();
   void computeHelpOptions();
@@ -87,6 +88,13 @@ public:
   /// \param diags Used to print diagnostics in case validation of the args fails.
   /// \return Whether the validation passed and successfully set the module alias map
   static bool computeModuleAliases(std::vector<std::string> args,
+                                   FrontendOptions &options,
+                                   DiagnosticEngine &diags);
+};
+
+class ModuleOriginsConverter {
+public:
+  static bool computeModuleOrigins(std::vector<std::string> args,
                                    FrontendOptions &options,
                                    DiagnosticEngine &diags);
 };

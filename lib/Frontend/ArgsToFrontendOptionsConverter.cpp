@@ -540,6 +540,11 @@ bool ArgsToFrontendOptionsConverter::computeModuleAliases() {
   return ModuleAliasesConverter::computeModuleAliases(list, Opts, Diags);
 }
 
+bool ArgsToFrontendOptionsConverter::computeModuleOrigins() {
+  auto list = Args.getAllArgValues(options::OPT_module_origin);
+  return ModuleOriginsConverter::computeModuleOrigins(list, Opts, Diags);
+}
+
 bool ArgsToFrontendOptionsConverter::computeModuleName() {
   // Module name must be computed before computing module
   // aliases. Instead of asserting, clearing ModuleAliasMap
@@ -791,6 +796,38 @@ bool ModuleAliasesConverter::computeModuleAliases(std::vector<std::string> args,
         diags.diagnose(SourceLoc(), diag::error_module_alias_duplicate, lhs);
         return false;
       }
+    }
+  }
+  return true;
+}
+
+bool ModuleOriginsConverter::computeModuleOrigins(std::vector<std::string> args,
+                                                  FrontendOptions &options,
+                                                  DiagnosticEngine &diags) {
+  if (!args.empty()) {
+    // ModuleOriginMap should initially be empty as setting
+    // it should be called only once
+    options.ModuleOriginMap.clear();
+
+    for (auto item: args) {
+      auto str = StringRef(item);
+      // splits to an alias and the underlying name
+      auto pair = str.split('=');
+      auto lhs = pair.first;
+      auto rhs = pair.second;
+      
+      if (rhs.empty()) { // '=' is missing
+        diags.diagnose(SourceLoc(), diag::error_module_alias_invalid_format, str);
+        return false;
+      }
+      
+      // First, add the underlying name as a key to prevent it from being
+      // used as an alias
+      options.ModuleOriginMap[rhs].push_back(lhs);
+      // if (!options.ModuleOriginMap.insert({rhs, StringRef()}).second) {
+      //   diags.diagnose(SourceLoc(), diag::error_module_alias_duplicate, rhs);
+      //   return false;
+      // }
     }
   }
   return true;

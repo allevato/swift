@@ -456,6 +456,10 @@ def module_alias : Separate<["-"], "module-alias">,
   MetaVarName<"<alias_name=underlying_name>">,
   HelpText<"If a source file imports or references module <alias_name>, the <underlying_name> is used for the contents of the file">;
 
+def module_origin : Separate<["-"], "module-origin">,
+  Flags<[FrontendOption]>,
+  HelpText<"TBD">;
+
 def module_link_name : Separate<["-"], "module-link-name">,
   Flags<[FrontendOption, ModuleInterfaceOption]>,
   HelpText<"Library to link against when using this module">;

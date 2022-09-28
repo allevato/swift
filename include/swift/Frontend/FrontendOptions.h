@@ -53,6 +53,9 @@ public:
   /// The map of aliases and underlying names of imported or referenced modules.
   llvm::StringMap<StringRef> ModuleAliasMap;
 
+  ///
+  llvm::StringMap<std::vector<StringRef>> ModuleOriginMap;
+
   /// The name of the module that the frontend is building.
   std::string ModuleName;
 
