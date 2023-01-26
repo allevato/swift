@@ -1404,6 +1404,21 @@ static bool ParseSearchPathArgs(SearchPathOptions &Opts,
 
   if (const Arg *A = Args.getLastArg(OPT_explicit_swift_module_map))
     Opts.ExplicitSwiftModuleMap = A->getValue();
+
+  if (const Arg *A = Args.getLastArg(OPT_allowed_import_enforcement)) {
+    StringRef Argument = A->getValue();
+    if (Argument == "none") {
+      Opts.AllowedImportEnforcement = AllowedImportEnforcementLevel::None;
+    } else if (Argument == "user") {
+      Opts.AllowedImportEnforcement = AllowedImportEnforcementLevel::User;
+    } else if (Argument == "all") {
+      Opts.AllowedImportEnforcement = AllowedImportEnforcementLevel::All;
+    } else {
+      Diags.diagnose(SourceLoc(), diag::error_unsupported_option_argument,
+          A->getOption().getPrefixedName(), A->getValue());
+    }
+  }
+  
   for (auto A: Args.filtered(OPT_candidate_module_file)) {
     Opts.CandidateCompiledModules.push_back(resolveSearchPath(A->getValue()));
   }

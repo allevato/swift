@@ -422,6 +422,14 @@ def module_cache_path : Separate<["-"], "module-cache-path">,
          SwiftSymbolGraphExtractOption, SwiftAPIDigesterOption]>,
   HelpText<"Specifies the Clang module cache path">;
 
+def allowed_import_enforcement : Separate<["-"], "allowed-import-enforcement">,
+  Flags<[FrontendOption]>,
+  HelpText<"Enforcement of allowed imports ('none', 'user', or 'all')">,
+  MetaVarName<"<level>">;
+def allowed_import_enforcement_EQ : Joined<["-"], "allowed-import-enforcement=">,
+  Flags<[FrontendOption]>,
+  MetaVarName<"<level>">, Alias<allowed_import_enforcement>;
+
 def enable_library_evolution : Flag<["-"], "enable-library-evolution">,
   Flags<[FrontendOption, ModuleInterfaceOption]>,
   HelpText<"Build the module to allow binary-compatible library evolution">;

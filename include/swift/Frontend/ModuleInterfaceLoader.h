@@ -152,6 +152,10 @@ class ExplicitSwiftModuleLoader: public SerializedModuleLoaderBase {
                   std::unique_ptr<llvm::MemoryBuffer> *ModuleSourceInfoBuffer,
                   bool skipBuildingInterface, bool IsFramework) override;
 
+  ModuleDecl *loadModule(SourceLoc importLoc,
+             ImportPath::Module path,
+             bool AllowMemoryCache) override;
+
   bool canImportModule(ImportPath::Module named,
                        ModuleVersionInfo *versionInfo) override;
 
@@ -191,6 +195,9 @@ struct ExplicitModuleInfo {
   // Path of a compiled Clang explicit module file. Empty for pure Swift
   // modules.
   std::string clangModulePath;
+  // A flag that indicates whether this module can be directly imported
+  // in Swift source if allowed import enforcement is enabled.
+  bool isImportAllowed;
 };
 
 /// Parser of explicit module maps passed into the compiler.
@@ -212,6 +219,7 @@ struct ExplicitModuleInfo {
 //      "isFramework": false,
 //      "clangModuleMapPath": "B/module.modulemap",
 //      "clangModulePath": "B.pcm",
+//      "isImportAllowed": true
 //    }
 //  ]
 class ExplicitModuleMapParser {

@@ -37,6 +37,21 @@ enum class ModuleSearchPathKind {
   CompilerPlugin,
 };
 
+/// The level of enforcement for allowed imports when using the explicit
+/// module loader. This is similar to layering checks possible in Clang
+/// via `use` declarations and `-fmodules-strict-decluse`.
+enum class AllowedImportEnforcementLevel {
+  // No enforcement; any module can be imported if it is available in the
+  // module map.
+  None,
+  // User modules must have `isImportAllowed` set to true in the module map
+  // in order to be imported. System modules can be imported unconditionally.
+  User,
+  // All modules, whether system or user modules, must have `isImportAllowed`
+  // set to true in the module map in order to be imported.
+  All,
+};
+
 /// A single module search path that can come from different sources, e.g.
 /// framework search paths, import search path etc.
 class ModuleSearchPath : public llvm::RefCountedBase<ModuleSearchPath> {
@@ -354,6 +369,10 @@ public:
 
   /// A map of explicit Swift module information.
   std::string ExplicitSwiftModuleMap;
+
+  /// The level of enforcement for allowed imports in the explicit Swift
+  /// module map.
+  AllowedImportEnforcementLevel AllowedImportEnforcement;
 
   /// A map of placeholder Swift module dependency information.
   std::string PlaceholderDependencyModuleMap;

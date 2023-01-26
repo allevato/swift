@@ -2008,6 +2008,43 @@ std::error_code ExplicitSwiftModuleLoader::findModuleFilesInDirectory(
   return std::make_error_code(std::errc::not_supported);
 }
 
+ModuleDecl *
+ExplicitSwiftModuleLoader::loadModule(SourceLoc importLoc,
+            ImportPath::Module path,
+            bool AllowMemoryCache) {
+  // Look up the module with the real name (physical name on disk);
+  // in case `-module-alias` is used, the name appearing in source files
+  // and the real module name are different. For example, '-module-alias Foo=Bar'
+  // maps Foo appearing in source files, e.g. 'import Foo', to the real module
+  // name Bar (on-disk name), which should be searched for loading.
+  ImportPath::Element mID = path.front();
+  StringRef moduleName = Ctx.getRealModuleName(mID.Item).str();
+  auto it = Impl.ExplicitModuleMap.find(moduleName);
+  if (it != Impl.ExplicitModuleMap.end()) {
+    const auto &moduleInfo = it->second;
+    bool isImportAllowed = false;
+    switch (Ctx.SearchPathOpts.AllowedImportEnforcement) {
+    case AllowedImportEnforcementLevel::None:
+      isImportAllowed = true;
+      break;
+    case AllowedImportEnforcementLevel::User:
+      isImportAllowed = moduleInfo.isImportAllowed || moduleInfo.isSystem;
+      break;
+    case AllowedImportEnforcementLevel::All:
+      isImportAllowed = moduleInfo.isImportAllowed;
+      break;
+    }
+
+    if (!isImportAllowed) {
+      Ctx.Diags.diagnose(importLoc, diag::error_opening_explicit_module_file,
+                         moduleName);
+      return nullptr;
+    }
+  }
+
+  return SerializedModuleLoaderBase::loadModule(importLoc, path, AllowMemoryCache);
+}
+
 bool ExplicitSwiftModuleLoader::canImportModule(
     ImportPath::Module path, ModuleVersionInfo *versionInfo) {
   // FIXME: Swift submodules?
