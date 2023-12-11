@@ -1465,21 +1465,30 @@ class ImportDecl final : public Decl,
 
   SourceLoc ImportLoc;
   SourceLoc KindLoc;
+  SourceLoc AsKeywordLoc;
   /// Used to store the real module name corresponding to this import decl in
   /// case module aliasing is used. For example if '-module-alias Foo=Bar' was
   /// passed and this decl is 'import Foo', the real name 'Bar' will be stored.
   Identifier RealModuleName;
+  /// The name that should be used in the importing source file to refer to
+  /// the module, if different from the module's name itself.
+  Identifier LocalName;
+  SourceLoc LocalNameLoc;
 
   /// The resolved module.
   ModuleDecl *Mod = nullptr;
 
   ImportDecl(DeclContext *DC, SourceLoc ImportLoc, ImportKind K,
-             SourceLoc KindLoc, ImportPath Path);
+             SourceLoc KindLoc, ImportPath Path, SourceLoc AsKeywordLoc,
+                            Identifier LocalName, SourceLoc LocalNameLoc);
 public:
   static ImportDecl *create(ASTContext &C, DeclContext *DC,
                             SourceLoc ImportLoc, ImportKind Kind,
                             SourceLoc KindLoc,
                             ImportPath Path,
+                            SourceLoc AsKeywordLoc = SourceLoc(),
+                            Identifier LocalName = Identifier(),
+                            SourceLoc LocalNameLoc = SourceLoc(),
                             ClangNode ClangN = ClangNode());
 
   /// Returns the import kind that is most appropriate for \p VD.
@@ -1587,6 +1596,11 @@ public:
     return SourceRange(ImportLoc, getImportPath().getSourceRange().End);
   }
   SourceLoc getKindLoc() const { return KindLoc; }
+
+  SourceLoc getAsKeywordLoc() const { return AsKeywordLoc; }
+
+  Identifier getLocalName() const { return LocalName; }
+  SourceLoc getLocalNameLoc() const { return LocalNameLoc; }
 
   static bool classof(const Decl *D) {
     return D->getKind() == DeclKind::Import;

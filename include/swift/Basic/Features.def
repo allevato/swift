@@ -259,6 +259,10 @@ EXPERIMENTAL_FEATURE(Extern, true)
 // global functions and key paths.
 EXPERIMENTAL_FEATURE(InferSendableFromCaptures, false)
 
+// Allow imports of modules with non-identifier characters via string literals
+// and locally renaming with an `as` clause.
+EXPERIMENTAL_FEATURE(RenamedImports, true)
+
 #undef EXPERIMENTAL_FEATURE_EXCLUDED_FROM_MODULE_INTERFACE
 #undef EXPERIMENTAL_FEATURE
 #undef UPCOMING_FEATURE

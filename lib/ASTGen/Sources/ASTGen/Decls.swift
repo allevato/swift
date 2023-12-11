@@ -579,8 +579,17 @@ extension ASTGenVisitor {
       importKind: importKind,
       importKindLoc: node.importKindSpecifier.bridgedSourceLoc(in: self),
       path: node.path.lazy.map {
-        $0.name.bridgedIdentifierAndSourceLoc(in: self) as BridgedIdentifierAndSourceLoc
-      }.bridgedArray(in: self)
+        switch $0.name {
+        case .identifier(let identifier):
+          return identifier.bridgedIdentifierAndSourceLoc(in: self) as BridgedIdentifierAndSourceLoc
+        case .string(let stringExpr):
+          //return stringExpr.bridgedIdentifierAndSourceLoc(in: self) as BridgedIdentifierAndSourceLoc
+          fatalError("not yet implemented")
+        }
+      }.bridgedArray(in: self),
+      asKeywordLoc: (node.localNameClause?.asKeyword).bridgedSourceLoc(in: self),
+      localName: (node.localNameClause?.localName).bridgedIdentifier(in: self),
+      localNameLoc: (node.localNameClause?.localName).bridgedSourceLoc(in: self)
     )
   }
 }

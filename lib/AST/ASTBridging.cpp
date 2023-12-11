@@ -754,7 +754,9 @@ BridgedPrecedenceGroupDecl BridgedPrecedenceGroupDecl_createParsed(
 BridgedImportDecl BridgedImportDecl_createParsed(
     BridgedASTContext cContext, BridgedDeclContext cDeclContext,
     BridgedSourceLoc cImportKeywordLoc, BridgedImportKind cImportKind,
-    BridgedSourceLoc cImportKindLoc, BridgedArrayRef cImportPathElements) {
+    BridgedSourceLoc cImportKindLoc, BridgedArrayRef cImportPathElements,
+    BridgedSourceLoc cAsKeywordLoc, BridgedIdentifier cLocalName,
+    BridgedSourceLoc cLocalNameLoc) {
   ImportPath::Builder builder;
   for (auto &element :
        cImportPathElements.unbridged<BridgedIdentifierAndSourceLoc>()) {
@@ -765,7 +767,8 @@ BridgedImportDecl BridgedImportDecl_createParsed(
   return ImportDecl::create(
       context, cDeclContext.unbridged(), cImportKeywordLoc.unbridged(),
       static_cast<ImportKind>(cImportKind), cImportKindLoc.unbridged(),
-      std::move(builder).get());
+      std::move(builder).get(), cAsKeywordLoc.unbridged(),
+      cLocalName.unbridged(), cLocalNameLoc.unbridged());
 }
 
 BridgedTopLevelCodeDecl BridgedTopLevelCodeDecl_createStmt(

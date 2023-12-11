@@ -3416,7 +3416,8 @@ ImportDecl *swift::createImportDecl(ASTContext &Ctx,
 
   auto *ID = ImportDecl::create(Ctx, DC, SourceLoc(),
                                 ImportKind::Module, SourceLoc(),
-                                importPath.get(), ClangN);
+                                importPath.get(), SourceLoc(),
+                                Identifier(), SourceLoc(), ClangN);
   if (IsExported)
     ID->getAttrs().add(new (Ctx) ExportedAttr(/*IsImplicit=*/false));
   return ID;

@@ -501,11 +501,14 @@ enum ENUM_EXTENSIBILITY_ATTR(open) BridgedImportKind {
 };
 
 SWIFT_NAME("BridgedImportDecl.createParsed(_:declContext:importKeywordLoc:"
-           "importKind:importKindLoc:path:)")
+           "importKind:importKindLoc:path:asKeywordLoc:"
+           "localName:localNameLoc:)")
 BridgedImportDecl BridgedImportDecl_createParsed(
     BridgedASTContext cContext, BridgedDeclContext cDeclContext,
     BridgedSourceLoc cImportKeywordLoc, BridgedImportKind cImportKind,
-    BridgedSourceLoc cImportKindLoc, BridgedArrayRef cImportPathElements);
+    BridgedSourceLoc cImportKindLoc, BridgedArrayRef cImportPathElements,
+    BridgedSourceLoc cAsKeywordLoc, BridgedIdentifier cLocalName,
+    BridgedSourceLoc cLocalNameLoc);
 
 SWIFT_NAME(
     "BridgedTopLevelCodeDecl.createParsed(_:declContext:startLoc:stmt:endLoc:)")

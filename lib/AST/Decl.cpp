@@ -1400,6 +1400,9 @@ ImportDecl *ImportDecl::create(ASTContext &Ctx, DeclContext *DC,
                                SourceLoc ImportLoc, ImportKind Kind,
                                SourceLoc KindLoc,
                                ImportPath Path,
+                               SourceLoc AsKeywordLoc,
+                               Identifier LocalName,
+                               SourceLoc LocalNameLoc,
                                ClangNode ClangN) {
   assert(!Path.empty());
   assert(Kind == ImportKind::Module || Path.size() > 1);
@@ -1407,7 +1410,7 @@ ImportDecl *ImportDecl::create(ASTContext &Ctx, DeclContext *DC,
          isa<clang::ImportDecl>(ClangN.getAsDecl()));
   size_t Size = totalSizeToAlloc<ImportPath::Element>(Path.size());
   void *ptr = allocateMemoryForDecl<ImportDecl>(Ctx, Size, !ClangN.isNull());
-  auto D = new (ptr) ImportDecl(DC, ImportLoc, Kind, KindLoc, Path);
+  auto D = new (ptr) ImportDecl(DC, ImportLoc, Kind, KindLoc, Path, AsKeywordLoc, LocalName, LocalNameLoc);
   if (ClangN)
     D->setClangNode(ClangN);
   auto realNameIfExists = Ctx.getRealModuleName(Path.front().Item,
@@ -1419,8 +1422,12 @@ ImportDecl *ImportDecl::create(ASTContext &Ctx, DeclContext *DC,
 }
 
 ImportDecl::ImportDecl(DeclContext *DC, SourceLoc ImportLoc, ImportKind K,
-                       SourceLoc KindLoc, ImportPath Path)
-  : Decl(DeclKind::Import, DC), ImportLoc(ImportLoc), KindLoc(KindLoc) {
+                       SourceLoc KindLoc, ImportPath Path,
+                       SourceLoc AsKeywordLoc, Identifier LocalName,
+                       SourceLoc LocalNameLoc)
+  : Decl(DeclKind::Import, DC), ImportLoc(ImportLoc), KindLoc(KindLoc),
+    AsKeywordLoc(AsKeywordLoc), LocalName(LocalName),
+    LocalNameLoc(LocalNameLoc) {
   Bits.ImportDecl.NumPathElements = Path.size();
   assert(Bits.ImportDecl.NumPathElements == Path.size() && "Truncation error");
   Bits.ImportDecl.ImportKind = static_cast<unsigned>(K);

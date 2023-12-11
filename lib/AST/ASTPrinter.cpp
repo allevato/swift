@@ -3640,6 +3640,14 @@ static bool usesFeatureExtern(Decl *decl) {
   return decl->getAttrs().hasAttribute<ExternAttr>();
 }
 
+static bool usesFeatureRenamedImports(Decl *decl) {
+  if (auto importDecl = dyn_cast<ImportDecl>(decl)) {
+    // TODO: Also check if the first component is a string literal
+    return importDecl->getAsKeywordLoc().isValid();
+  }
+  return false;
+}
+
 /// Suppress the printing of a particular feature.
 static void suppressingFeature(PrintOptions &options, Feature feature,
                                llvm::function_ref<void()> action) {
