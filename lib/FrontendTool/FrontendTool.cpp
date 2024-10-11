@@ -481,7 +481,9 @@ static bool dumpAST(CompilerInstance &Instance) {
     // Some invocations don't have primary files. In that case, we default to
     // looking for the main file and dumping it to `stdout`.
     auto &SF = getPrimaryOrMainSourceFile(Instance);
-    SF.dump(llvm::outs(), /*parseIfNeeded*/ true);
+    //SF.dump(llvm::outs(), /*parseIfNeeded*/ true);
+    //FIXME
+    SF.dumpJSON(Instance.getASTContext(), llvm::outs());
   }
   return Instance.getASTContext().hadError();
 }
