@@ -204,6 +204,19 @@ bool ArgsToFrontendOptionsConverter::convert(
 
   computeDumpScopeMapLocations();
 
+  if (const Arg *A = Args.getLastArg(OPT_dump_ast_format)) {
+    Opts.DumpASTFormat =
+        llvm::StringSwitch<FrontendOptions::ASTFormat>(A->getValue())
+            .Case("json", FrontendOptions::ASTFormat::JSON)
+            .Case("json-zlib", FrontendOptions::ASTFormat::JSONZlib)
+            .Default(FrontendOptions::ASTFormat::Default);
+    if (Opts.DumpASTFormat == FrontendOptions::ASTFormat::JSONZlib &&
+        !llvm::compression::zlib::isAvailable()) {
+      Diags.diagnose(SourceLoc(), diag::zlib_not_supported);
+      return true;
+    }
+  }
+
   std::optional<FrontendInputsAndOutputs> inputsAndOutputs =
       ArgsToFrontendInputsConverter(Diags, Args).convert(buffers);
 
